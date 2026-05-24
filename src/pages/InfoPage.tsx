@@ -425,6 +425,607 @@ function WeekCalendar() {
   );
 }
 
+/* ============ Upcoming meetings ============ */
+
+type UpcomingMeeting = {
+  when: string;
+  title: string;
+  room: string;
+  duration: string;
+  attendees: string[];
+};
+
+const UPCOMING_MEETINGS: UpcomingMeeting[] = [
+  {
+    when: "Today · 14:00",
+    title: "Aurora migration review",
+    room: "Cedar",
+    duration: "90m",
+    attendees: ["Kartikeya Rao", "Adhiraj Singh", "Hiroshi Tanaka", "Mei Chen"]
+  },
+  {
+    when: "Today · 16:00",
+    title: "1:1 · Adhiraj",
+    room: "huddle 3",
+    duration: "30m",
+    attendees: ["Kartikeya Rao", "Adhiraj Singh"]
+  },
+  {
+    when: "Tue · 10:00",
+    title: "Design review · onboarding v3",
+    room: "Pine",
+    duration: "60m",
+    attendees: ["Sarah Chen", "Aanya Iyer", "Marcus Thompson", "Mannan Verma"]
+  },
+  {
+    when: "Tue · 13:00",
+    title: "Acme QBR",
+    room: "Cedar",
+    duration: "120m",
+    attendees: ["Marcus Thompson", "Mei Chen", "Lisa Foster"]
+  },
+  {
+    when: "Wed · 11:00",
+    title: "Pricing committee",
+    room: "Boardroom",
+    duration: "90m",
+    attendees: ["Marcus Thompson", "Lisa Foster", "Hiroshi Tanaka", "Priya Sharma"]
+  }
+];
+
+function UpcomingMeetings() {
+  return (
+    <section className="mt-12">
+      <div className="flex items-baseline justify-between">
+        <SectionLabel count={`${UPCOMING_MEETINGS.length} next`}>Upcoming meetings</SectionLabel>
+        <span className="font-mono text-[10.5px] tracking-[0.06em] text-[#78716C]">starts of slots only</span>
+      </div>
+      <div className="mt-3 overflow-hidden rounded-[4px] border bg-white" style={{ borderColor: BORDER }}>
+        {UPCOMING_MEETINGS.map((m, i) => (
+          <div
+            key={i}
+            className="grid items-center gap-4 px-4 py-3"
+            style={{
+              gridTemplateColumns: "120px 1fr auto",
+              borderTop: i === 0 ? "none" : `1px solid ${BORDER}`
+            }}
+          >
+            <div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.14em]" style={{ color: MUTED }}>
+                {m.when}
+              </div>
+              <div className="mt-0.5 font-mono text-[10px]" style={{ color: MUTED_2 }}>
+                {m.duration} · {m.room}
+              </div>
+            </div>
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-medium" style={{ color: INK }}>
+                {m.title}
+              </div>
+              <div className="mt-1 flex items-center gap-2">
+                <div className="flex -space-x-1.5">
+                  {m.attendees.slice(0, 4).map((a) => {
+                    const initials = a
+                      .split(" ")
+                      .map((p) => p[0])
+                      .join("")
+                      .slice(0, 2);
+                    return (
+                      <InitialsAvatar
+                        key={a}
+                        name={a}
+                        initials={initials}
+                        size={20}
+                        ring="#FFFFFF"
+                      />
+                    );
+                  })}
+                </div>
+                <span className="font-mono text-[10px]" style={{ color: MUTED }}>
+                  {m.attendees.length} attendees
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="rounded-[3px] border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] transition-colors hover:bg-[#FAF8F5]"
+              style={{ borderColor: BORDER, color: MUTED }}
+            >
+              Join
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ============ Alerts ============ */
+
+type AlertSev = "critical" | "warning" | "info";
+
+type SystemAlert = {
+  id: string;
+  severity: AlertSev;
+  title: string;
+  detail: string;
+  source: string;
+  when: string;
+};
+
+const SYSTEM_ALERTS: SystemAlert[] = [
+  {
+    id: "al1",
+    severity: "critical",
+    title: "AWS bill projected to exceed budget",
+    detail: "Current burn $4,200/mo against $3,500 cap. Pivoting to reserved instances would save ~$540.",
+    source: "AWS · cost explorer",
+    when: "8m ago"
+  },
+  {
+    id: "al2",
+    severity: "warning",
+    title: "Cursor connector erroring out",
+    detail: "Last sync failed 12 hours ago. 34 items not indexed into the brain.",
+    source: "Brain · ingestion",
+    when: "12h ago"
+  },
+  {
+    id: "al3",
+    severity: "warning",
+    title: "SOC2 audit window opens Friday",
+    detail: "Acme requires the letter by May 30. Owner is Priya — surface in Friday's standup.",
+    source: "Compliance",
+    when: "2d ago"
+  },
+  {
+    id: "al4",
+    severity: "info",
+    title: "Two new hires onboarded this week",
+    detail: "Yuki Sato (Platform) and Ji-woo Park (Design ops). Welcome packs sent by Onboarder agent.",
+    source: "People · HR",
+    when: "3d ago"
+  }
+];
+
+const ALERT_TONES: Record<AlertSev, { fg: string; bg: string; label: string; symbol: string }> = {
+  critical: { fg: "#9E3B2E", bg: "rgba(158,59,46,0.12)", label: "Critical", symbol: "!" },
+  warning: { fg: "#8C5D1E", bg: "rgba(194,136,64,0.16)", label: "Warning", symbol: "!" },
+  info: { fg: "#5A6B47", bg: "rgba(122,140,95,0.14)", label: "Info", symbol: "i" }
+};
+
+function AlertsWidget() {
+  return (
+    <section className="mt-12">
+      <div className="flex items-baseline justify-between">
+        <SectionLabel count={SYSTEM_ALERTS.length}>Alerts</SectionLabel>
+        <span className="font-mono text-[10.5px] tracking-[0.06em] text-[#78716C]">system + agent</span>
+      </div>
+      <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+        {SYSTEM_ALERTS.map((a) => {
+          const tone = ALERT_TONES[a.severity];
+          return (
+            <div
+              key={a.id}
+              className="overflow-hidden rounded-[4px] border bg-white"
+              style={{
+                borderColor: BORDER,
+                borderLeftWidth: 3,
+                borderLeftColor: tone.fg
+              }}
+            >
+              <div className="flex items-start justify-between gap-3 px-4 py-3">
+                <div className="flex items-start gap-2.5">
+                  <span
+                    className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full font-mono text-[11px] font-medium"
+                    style={{ background: tone.bg, color: tone.fg }}
+                  >
+                    {tone.symbol}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-medium" style={{ color: INK }}>
+                      {a.title}
+                    </div>
+                    <p className="mt-1 text-[12px] leading-[1.55]" style={{ color: MUTED }}>
+                      {a.detail}
+                    </p>
+                  </div>
+                </div>
+                <span
+                  className="flex-shrink-0 rounded-[3px] px-1.5 py-[2px] font-mono text-[9.5px] uppercase tracking-[0.12em]"
+                  style={{ background: tone.bg, color: tone.fg }}
+                >
+                  {tone.label}
+                </span>
+              </div>
+              <div
+                className="flex items-center justify-between border-t px-4 py-2 font-mono text-[10px]"
+                style={{ borderColor: BORDER, color: MUTED_2 }}
+              >
+                <span>{a.source}</span>
+                <span>{a.when}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/* ============ Active subscriptions + add + calculate ============ */
+
+type Subscription = {
+  id: string;
+  name: string;
+  vendor: string;
+  monthlyPerSeat: number; // USD per seat per month
+  seats: number;
+  cycle: "monthly" | "yearly";
+  renewal: string;
+  owner: string;
+  category: "dev" | "design" | "comms" | "data" | "ops" | "ai";
+};
+
+const INITIAL_SUBS: Subscription[] = [
+  { id: "s1", name: "GitHub Enterprise", vendor: "GitHub", monthlyPerSeat: 21, seats: 47, cycle: "yearly", renewal: "2026-09-12", owner: "Kartikeya", category: "dev" },
+  { id: "s2", name: "Slack Business+", vendor: "Slack", monthlyPerSeat: 12.5, seats: 52, cycle: "monthly", renewal: "2026-06-01", owner: "Marcus", category: "comms" },
+  { id: "s3", name: "Notion Plus", vendor: "Notion", monthlyPerSeat: 10, seats: 47, cycle: "yearly", renewal: "2026-08-14", owner: "Marcus", category: "ops" },
+  { id: "s4", name: "Figma Organization", vendor: "Figma", monthlyPerSeat: 45, seats: 8, cycle: "yearly", renewal: "2026-11-03", owner: "Sarah", category: "design" },
+  { id: "s5", name: "Linear", vendor: "Linear", monthlyPerSeat: 14, seats: 24, cycle: "monthly", renewal: "2026-06-15", owner: "Adhiraj", category: "ops" },
+  { id: "s6", name: "Vercel Pro", vendor: "Vercel", monthlyPerSeat: 20, seats: 6, cycle: "monthly", renewal: "2026-06-22", owner: "Hiroshi", category: "dev" },
+  { id: "s7", name: "Sentry Team", vendor: "Sentry", monthlyPerSeat: 26, seats: 10, cycle: "yearly", renewal: "2026-10-04", owner: "Adhiraj", category: "dev" },
+  { id: "s8", name: "AWS · production", vendor: "AWS", monthlyPerSeat: 4200, seats: 1, cycle: "monthly", renewal: "rolling", owner: "Hiroshi", category: "data" },
+  { id: "s9", name: "OpenAI API", vendor: "OpenAI", monthlyPerSeat: 880, seats: 1, cycle: "monthly", renewal: "rolling", owner: "Mannan", category: "ai" }
+];
+
+const CATEGORY_TONES: Record<Subscription["category"], { fg: string; bg: string }> = {
+  dev:    { fg: "#3B82C4", bg: "rgba(59,130,196,0.12)" },
+  design: { fg: "#B8543D", bg: "rgba(184,84,61,0.10)" },
+  comms:  { fg: "#7062B8", bg: "rgba(139,127,212,0.14)" },
+  data:   { fg: "#5A6B47", bg: "rgba(122,140,95,0.14)" },
+  ops:    { fg: "#5A5450", bg: "rgba(120,113,108,0.10)" },
+  ai:     { fg: "#8C5D1E", bg: "rgba(194,136,64,0.14)" }
+};
+
+function fmtUSD(n: number): string {
+  if (n >= 100000) return "$" + Math.round(n / 1000) + "k";
+  if (n >= 1000) return "$" + (n / 1000).toFixed(1) + "k";
+  return "$" + n.toFixed(0);
+}
+
+function fmtUSDPrecise(n: number): string {
+  return "$" + n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+}
+
+function ActiveSubscriptions() {
+  const [subs, setSubs] = useState<Subscription[]>(INITIAL_SUBS);
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState({
+    name: "",
+    vendor: "",
+    cost: "",
+    seats: "",
+    cycle: "monthly" as Subscription["cycle"],
+    owner: "",
+    category: "dev" as Subscription["category"]
+  });
+
+  const totalMonthly = useMemo(() => subs.reduce((sum, s) => sum + s.monthlyPerSeat * s.seats, 0), [subs]);
+  const totalYearly = totalMonthly * 12;
+  const headcount = 47;
+  const perHead = totalMonthly / headcount;
+
+  const byCategory = useMemo(() => {
+    const map = new Map<Subscription["category"], number>();
+    for (const s of subs) {
+      const v = s.monthlyPerSeat * s.seats;
+      map.set(s.category, (map.get(s.category) ?? 0) + v);
+    }
+    return [...map.entries()].sort((a, b) => b[1] - a[1]);
+  }, [subs]);
+
+  // Live calculation while typing
+  const previewCost = parseFloat(form.cost || "0") || 0;
+  const previewSeats = parseInt(form.seats || "0", 10) || 0;
+  const previewMonthly = form.cycle === "monthly" ? previewCost * previewSeats : (previewCost * previewSeats) / 12;
+  const previewYearly = previewMonthly * 12;
+  const previewPerHead = headcount > 0 ? previewMonthly / headcount : 0;
+
+  function add() {
+    if (!form.name || previewCost <= 0 || previewSeats <= 0) return;
+    const next: Subscription = {
+      id: `s-${Date.now()}`,
+      name: form.name,
+      vendor: form.vendor || form.name,
+      monthlyPerSeat: form.cycle === "monthly" ? previewCost : previewCost / 12,
+      seats: previewSeats,
+      cycle: form.cycle,
+      renewal: form.cycle === "yearly" ? new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10) : "rolling",
+      owner: form.owner || "—",
+      category: form.category
+    };
+    setSubs((s) => [...s, next]);
+    setForm({ name: "", vendor: "", cost: "", seats: "", cycle: "monthly", owner: "", category: "dev" });
+    setAdding(false);
+  }
+
+  function remove(id: string) {
+    setSubs((s) => s.filter((x) => x.id !== id));
+  }
+
+  return (
+    <section className="mt-12">
+      <div className="flex items-baseline justify-between">
+        <SectionLabel count={`${subs.length} active`}>Active subscriptions</SectionLabel>
+        <button
+          type="button"
+          onClick={() => setAdding((v) => !v)}
+          className="rounded-[3px] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors"
+          style={{
+            background: adding ? "transparent" : RUST,
+            color: adding ? MUTED : "#FAF8F5",
+            border: adding ? `1px solid ${BORDER}` : "1px solid transparent"
+          }}
+        >
+          {adding ? "Cancel" : "+ Add subscription"}
+        </button>
+      </div>
+
+      {/* Summary band */}
+      <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
+        <SummaryTile label="Monthly burn" value={fmtUSDPrecise(totalMonthly)} sub={`${subs.length} services`} />
+        <SummaryTile label="Yearly projection" value={fmtUSDPrecise(totalYearly)} sub="if held constant" />
+        <SummaryTile label="Per headcount" value={fmtUSDPrecise(Math.round(perHead))} sub={`across ${headcount} people · /mo`} />
+        <SummaryTile label="Largest category" value={byCategory[0] ? byCategory[0][0] : "—"} sub={byCategory[0] ? fmtUSDPrecise(byCategory[0][1]) + "/mo" : ""} />
+      </div>
+
+      {/* Add form (collapsible) */}
+      <AnimatePresence initial={false}>
+        {adding ? (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22 }}
+            className="overflow-hidden"
+          >
+            <div
+              className="mt-3 rounded-[4px] border bg-white p-4"
+              style={{ borderColor: BORDER }}
+            >
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
+                <Field label="Service">
+                  <input
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    placeholder="e.g. Datadog"
+                    className="w-full bg-transparent text-[13px] focus:outline-none"
+                    style={{ color: INK }}
+                  />
+                </Field>
+                <Field label="Cost ($)">
+                  <input
+                    type="number"
+                    value={form.cost}
+                    onChange={(e) => setForm({ ...form, cost: e.target.value })}
+                    placeholder="per seat"
+                    className="w-full bg-transparent text-[13px] focus:outline-none"
+                    style={{ color: INK }}
+                  />
+                </Field>
+                <Field label="Seats">
+                  <input
+                    type="number"
+                    value={form.seats}
+                    onChange={(e) => setForm({ ...form, seats: e.target.value })}
+                    placeholder="0"
+                    className="w-full bg-transparent text-[13px] focus:outline-none"
+                    style={{ color: INK }}
+                  />
+                </Field>
+                <Field label="Cycle">
+                  <div className="flex gap-1">
+                    {(["monthly", "yearly"] as Subscription["cycle"][]).map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setForm({ ...form, cycle: c })}
+                        className="rounded-[3px] border px-2 py-0.5 text-[11px] capitalize transition-colors"
+                        style={{
+                          background: form.cycle === c ? RUST_TINT : "transparent",
+                          color: form.cycle === c ? RUST : MUTED,
+                          borderColor: form.cycle === c ? "rgba(184,84,61,0.4)" : BORDER
+                        }}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+                <Field label="Owner">
+                  <input
+                    value={form.owner}
+                    onChange={(e) => setForm({ ...form, owner: e.target.value })}
+                    placeholder="—"
+                    className="w-full bg-transparent text-[13px] focus:outline-none"
+                    style={{ color: INK }}
+                  />
+                </Field>
+                <Field label="Category">
+                  <select
+                    value={form.category}
+                    onChange={(e) => setForm({ ...form, category: e.target.value as Subscription["category"] })}
+                    className="w-full bg-transparent text-[13px] focus:outline-none"
+                    style={{ color: INK }}
+                  >
+                    {(["dev", "design", "comms", "data", "ops", "ai"] as Subscription["category"][]).map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+
+              {/* Live calculation */}
+              <div
+                className="mt-4 grid grid-cols-1 gap-3 rounded-[3px] p-3 md:grid-cols-4"
+                style={{ background: "#FAF8F5", border: `1px solid ${BORDER}` }}
+              >
+                <CalcCell label="Monthly impact" value={previewMonthly > 0 ? fmtUSDPrecise(Math.round(previewMonthly)) : "—"} />
+                <CalcCell label="Yearly impact" value={previewYearly > 0 ? fmtUSDPrecise(Math.round(previewYearly)) : "—"} />
+                <CalcCell label="Per headcount" value={previewPerHead > 0 ? fmtUSDPrecise(Math.round(previewPerHead)) + "/mo" : "—"} />
+                <CalcCell
+                  label="New monthly burn"
+                  value={previewMonthly > 0 ? fmtUSDPrecise(Math.round(totalMonthly + previewMonthly)) : fmtUSDPrecise(totalMonthly)}
+                  highlight
+                />
+              </div>
+
+              <div className="mt-3 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setForm({ name: "", vendor: "", cost: "", seats: "", cycle: "monthly", owner: "", category: "dev" })}
+                  className="rounded-[3px] border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] hover:bg-[#FAF8F5]"
+                  style={{ borderColor: BORDER, color: MUTED }}
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={add}
+                  disabled={!form.name || previewCost <= 0 || previewSeats <= 0}
+                  className="rounded-[3px] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors"
+                  style={{
+                    background: !form.name || previewCost <= 0 || previewSeats <= 0 ? "rgba(26,22,18,0.18)" : RUST,
+                    color: "#FAF8F5",
+                    cursor: !form.name || previewCost <= 0 || previewSeats <= 0 ? "not-allowed" : "pointer"
+                  }}
+                >
+                  Add to burn
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      {/* Subscriptions table */}
+      <div className="mt-3 overflow-hidden rounded-[4px] border bg-white" style={{ borderColor: BORDER }}>
+        <div
+          className="grid items-center gap-3 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+          style={{
+            background: "#FAF8F5",
+            color: MUTED,
+            gridTemplateColumns: "1.6fr 0.7fr 0.6fr 0.7fr 0.9fr 0.9fr 32px"
+          }}
+        >
+          <div>Service</div>
+          <div>Category</div>
+          <div className="text-right">Seats</div>
+          <div className="text-right">$/seat</div>
+          <div className="text-right">Monthly</div>
+          <div>Owner · renewal</div>
+          <div />
+        </div>
+        {subs.map((s, i) => {
+          const tone = CATEGORY_TONES[s.category];
+          const monthly = s.monthlyPerSeat * s.seats;
+          return (
+            <div
+              key={s.id}
+              className="grid items-center gap-3 px-4 py-2.5"
+              style={{
+                gridTemplateColumns: "1.6fr 0.7fr 0.6fr 0.7fr 0.9fr 0.9fr 32px",
+                borderTop: i === 0 ? "none" : `1px solid ${BORDER}`
+              }}
+            >
+              <div>
+                <div className="text-[12.5px]" style={{ color: INK }}>
+                  {s.name}
+                </div>
+                <div className="font-mono text-[10px]" style={{ color: MUTED_2 }}>
+                  {s.vendor}
+                </div>
+              </div>
+              <span
+                className="inline-flex items-center justify-center rounded-[3px] px-1.5 py-[2px] font-mono text-[9.5px] uppercase tracking-[0.12em]"
+                style={{ background: tone.bg, color: tone.fg, width: "fit-content" }}
+              >
+                {s.category}
+              </span>
+              <div className="text-right font-mono text-[12px]" style={{ color: INK }}>
+                {s.seats}
+              </div>
+              <div className="text-right font-mono text-[12px]" style={{ color: MUTED }}>
+                {fmtUSDPrecise(Math.round(s.monthlyPerSeat))}
+              </div>
+              <div className="text-right font-mono text-[12.5px]" style={{ color: INK }}>
+                {fmtUSDPrecise(Math.round(monthly))}
+              </div>
+              <div className="font-mono text-[10.5px]" style={{ color: MUTED }}>
+                {s.owner} · {s.renewal}
+              </div>
+              <button
+                type="button"
+                onClick={() => remove(s.id)}
+                aria-label="Remove"
+                className="flex h-6 w-6 items-center justify-center rounded-[3px] text-[#8A7E6F] hover:bg-[#FAF8F5] hover:text-[#9E3B2E]"
+              >
+                <TbX size={12} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function SummaryTile({ label, value, sub }: { label: string; value: string; sub: string }) {
+  return (
+    <div className="rounded-[4px] border bg-white px-4 py-3" style={{ borderColor: BORDER }}>
+      <div className="font-mono text-[10px] uppercase tracking-[0.14em]" style={{ color: MUTED }}>
+        {label}
+      </div>
+      <div className="mt-1 font-serif text-[24px] leading-none tracking-tight" style={{ color: INK }}>
+        {value}
+      </div>
+      <div className="mt-1 font-mono text-[10px]" style={{ color: MUTED_2 }}>
+        {sub}
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-[3px] border px-2.5 py-1.5" style={{ borderColor: BORDER, background: "#FAF8F5" }}>
+      <div className="font-mono text-[9px] uppercase tracking-[0.14em]" style={{ color: MUTED }}>
+        {label}
+      </div>
+      <div className="mt-0.5">{children}</div>
+    </div>
+  );
+}
+
+function CalcCell({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <div>
+      <div className="font-mono text-[9px] uppercase tracking-[0.14em]" style={{ color: MUTED }}>
+        {label}
+      </div>
+      <div
+        className="mt-0.5 font-serif text-[18px] leading-tight tracking-tight"
+        style={{ color: highlight ? RUST : INK }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
 function RecentChanges() {
   return (
     <section className="mt-12">
@@ -605,13 +1206,22 @@ export default function InfoPage() {
             </div>
           </section>
 
-          {/* My subscriptions (moved from Dashboard) */}
+          {/* My subscriptions (project subscriptions — from Dashboard) */}
           <MySubscriptions onPick={(p) => setSelectedProject(p)} />
 
-          {/* Week calendar (moved from Dashboard) */}
+          {/* Week calendar */}
           <WeekCalendar />
 
-          {/* Recent changes (moved from Dashboard, scoped wider than ship log) */}
+          {/* Upcoming meetings (slim list) */}
+          <UpcomingMeetings />
+
+          {/* Alerts — system + agent */}
+          <AlertsWidget />
+
+          {/* Active SaaS subscriptions with add + live calculate */}
+          <ActiveSubscriptions />
+
+          {/* Recent changes — cross-team activity stream */}
           <RecentChanges />
 
           {/* People + Projects */}
