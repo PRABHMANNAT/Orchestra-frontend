@@ -215,30 +215,72 @@ type ProjectSort = "health" | "deadline" | "team";
 // Folded into Info page; the dedicated Dashboard route has been removed.
 // ────────────────────────────────────────────────────────────────────────────
 
-type WeekEvent = {
-  day: number; // 0–4 Mon–Fri
+type CalEvent = {
+  date: string; // YYYY-MM-DD
   time: string;
+  duration: string;
   title: string;
   team: string;
-  attendees: number;
+  attendees: string[];
+  room: string;
   unassigned?: boolean;
 };
 
-const WEEK_EVENTS: WeekEvent[] = [
-  { day: 0, time: "09:30", title: "Northstar standup", team: "Engineering", attendees: 6 },
-  { day: 0, time: "14:00", title: "Aurora migration review", team: "Platform", attendees: 4 },
-  { day: 0, time: "16:00", title: "1:1 · Adhiraj", team: "Engineering", attendees: 2 },
-  { day: 1, time: "10:00", title: "Design review · onboarding v3", team: "Design", attendees: 5 },
-  { day: 1, time: "13:00", title: "Acme QBR", team: "Customer", attendees: 4, unassigned: true },
-  { day: 2, time: "09:00", title: "Standup", team: "Engineering", attendees: 6 },
-  { day: 2, time: "11:00", title: "Pricing committee", team: "GTM", attendees: 7 },
-  { day: 2, time: "15:00", title: "Security review", team: "Engineering", attendees: 3, unassigned: true },
-  { day: 3, time: "11:00", title: "RFC walk · edge cache", team: "Engineering", attendees: 5 },
-  { day: 3, time: "14:00", title: "Hiring loop debrief", team: "Ops", attendees: 4 },
-  { day: 4, time: "10:00", title: "All-hands prep", team: "All", attendees: 8, unassigned: true },
-  { day: 4, time: "13:00", title: "Apollo data residency", team: "Platform", attendees: 3 },
-  { day: 4, time: "15:30", title: "Investor update review", team: "GTM", attendees: 4 }
-];
+function isoKey(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// Build events anchored to this month so the calendar always feels live.
+function buildMonthEvents(): CalEvent[] {
+  const today = new Date();
+  const y = today.getFullYear();
+  const m = today.getMonth();
+  const dayKey = (offset: number) => isoKey(new Date(y, m, today.getDate() + offset));
+
+  return [
+    // Today
+    { date: dayKey(0), time: "09:30", duration: "30m", title: "Northstar standup", team: "Engineering", attendees: ["Kartikeya Rao", "Adhiraj Singh", "Hiroshi Tanaka", "Aanya Iyer"], room: "Atrium" },
+    { date: dayKey(0), time: "11:00", duration: "60m", title: "1:1 · Adhiraj", team: "Engineering", attendees: ["Kartikeya Rao", "Adhiraj Singh"], room: "huddle 3" },
+    { date: dayKey(0), time: "14:00", duration: "90m", title: "Aurora migration review", team: "Platform", attendees: ["Kartikeya Rao", "Adhiraj Singh", "Hiroshi Tanaka", "Mei Chen"], room: "Cedar" },
+    { date: dayKey(0), time: "16:30", duration: "30m", title: "Customer call · Apollo", team: "GTM", attendees: ["Marcus Thompson", "Lisa Foster"], room: "huddle 1", unassigned: true },
+
+    // +1d
+    { date: dayKey(1), time: "10:00", duration: "60m", title: "Design review · onboarding v3", team: "Design", attendees: ["Sarah Chen", "Aanya Iyer", "Marcus Thompson", "Mannan Verma"], room: "Pine" },
+    { date: dayKey(1), time: "13:00", duration: "120m", title: "Acme QBR", team: "Customer", attendees: ["Marcus Thompson", "Mei Chen", "Lisa Foster"], room: "Cedar", unassigned: true },
+    { date: dayKey(1), time: "16:00", duration: "45m", title: "Sprint planning", team: "Engineering", attendees: ["Kartikeya Rao", "Adhiraj Singh", "Hiroshi Tanaka", "Aanya Iyer", "Prabh Mannat"], room: "Atrium" },
+
+    // +2d
+    { date: dayKey(2), time: "09:00", duration: "30m", title: "Standup", team: "Engineering", attendees: ["Kartikeya Rao", "Adhiraj Singh", "Hiroshi Tanaka", "Aanya Iyer"], room: "Atrium" },
+    { date: dayKey(2), time: "11:00", duration: "90m", title: "Pricing committee", team: "GTM", attendees: ["Marcus Thompson", "Lisa Foster", "Hiroshi Tanaka", "Priya Sharma"], room: "Boardroom" },
+    { date: dayKey(2), time: "15:00", duration: "60m", title: "Security review", team: "Engineering", attendees: ["Hiroshi Tanaka", "Priya Sharma", "Adhiraj Singh"], room: "Pine", unassigned: true },
+
+    // +3d
+    { date: dayKey(3), time: "09:30", duration: "30m", title: "Stand-up", team: "Engineering", attendees: ["Kartikeya Rao", "Adhiraj Singh", "Hiroshi Tanaka"], room: "Atrium" },
+    { date: dayKey(3), time: "11:00", duration: "60m", title: "RFC walk · edge cache", team: "Engineering", attendees: ["Adhiraj Singh", "Hiroshi Tanaka", "Kartikeya Rao", "Aanya Iyer", "Prabh Mannat"], room: "Cedar" },
+    { date: dayKey(3), time: "14:00", duration: "60m", title: "Hiring loop debrief", team: "Ops", attendees: ["Prabh Mannat", "Marcus Thompson", "Kartikeya Rao", "Sarah Chen"], room: "Pine" },
+
+    // +4d
+    { date: dayKey(4), time: "10:00", duration: "60m", title: "All-hands prep", team: "All", attendees: ["Marcus Thompson", "Sarah Chen", "Kartikeya Rao", "Lisa Foster", "Priya Sharma", "Hiroshi Tanaka", "Mannan Verma", "Adhiraj Singh"], room: "Atrium", unassigned: true },
+    { date: dayKey(4), time: "13:00", duration: "60m", title: "Apollo data residency", team: "Platform", attendees: ["Hiroshi Tanaka", "Mei Chen", "Adhiraj Singh"], room: "huddle 3" },
+    { date: dayKey(4), time: "15:30", duration: "60m", title: "Investor update review", team: "GTM", attendees: ["Marcus Thompson", "Lisa Foster", "Kartikeya Rao", "Hiroshi Tanaka"], room: "Boardroom" },
+
+    // Past + future filler so the month feels populated
+    { date: dayKey(-1), time: "09:30", duration: "30m", title: "Standup", team: "Engineering", attendees: ["Kartikeya Rao", "Adhiraj Singh"], room: "Atrium" },
+    { date: dayKey(-1), time: "14:00", duration: "60m", title: "Customer feedback synthesis", team: "Product", attendees: ["Marcus Thompson", "Mei Chen"], room: "huddle 3" },
+    { date: dayKey(-2), time: "11:00", duration: "60m", title: "Brain retro", team: "Engineering", attendees: ["Kartikeya Rao", "Adhiraj Singh", "Aanya Iyer"], room: "Cedar" },
+    { date: dayKey(-3), time: "13:00", duration: "120m", title: "Q2 planning", team: "All", attendees: ["Marcus Thompson", "Kartikeya Rao", "Sarah Chen", "Lisa Foster", "Priya Sharma"], room: "Boardroom" },
+    { date: dayKey(-5), time: "10:00", duration: "60m", title: "Onboarding shadow · Yuki", team: "Ops", attendees: ["Mannan Verma", "Yuki Sato"], room: "huddle 1" },
+
+    { date: dayKey(7), time: "10:00", duration: "60m", title: "Northstar architecture review", team: "Engineering", attendees: ["Kartikeya Rao", "Hiroshi Tanaka", "Adhiraj Singh"], room: "Cedar" },
+    { date: dayKey(7), time: "14:00", duration: "90m", title: "Pricing rollout sync", team: "GTM", attendees: ["Marcus Thompson", "Lisa Foster"], room: "Boardroom" },
+    { date: dayKey(9), time: "11:00", duration: "60m", title: "Design system audit", team: "Design", attendees: ["Sarah Chen", "Aanya Iyer", "Ji-woo Park"], room: "Pine" },
+    { date: dayKey(10), time: "13:00", duration: "120m", title: "Apollo expansion kickoff", team: "Product", attendees: ["Marcus Thompson", "Sarah Chen", "Hiroshi Tanaka"], room: "Cedar", unassigned: true },
+    { date: dayKey(12), time: "11:00", duration: "30m", title: "1:1 · Sarah", team: "Design", attendees: ["Kartikeya Rao", "Sarah Chen"], room: "huddle 3" },
+    { date: dayKey(14), time: "10:00", duration: "60m", title: "All-hands · monthly", team: "All", attendees: ["Marcus Thompson", "Kartikeya Rao", "Sarah Chen", "Lisa Foster", "Priya Sharma", "Hiroshi Tanaka", "Mannan Verma", "Adhiraj Singh"], room: "Atrium" }
+  ];
+}
+
+const MONTH_EVENTS: CalEvent[] = buildMonthEvents();
 
 type RecentChange = {
   kind: "ship" | "decision" | "doc" | "blocker" | "person";
@@ -342,84 +384,299 @@ function SubscriptionCard({ project, onClick }: { project: Project; onClick: () 
   );
 }
 
+type CalCell = {
+  date: Date;
+  inMonth: boolean;
+  isToday: boolean;
+};
+
+function buildCalendarCells(year: number, month: number): CalCell[] {
+  const cells: CalCell[] = [];
+  const first = new Date(year, month, 1);
+  // Monday-first weekday offset (Mon = 0 … Sun = 6)
+  const offset = (first.getDay() + 6) % 7;
+  const start = new Date(year, month, 1 - offset);
+  const todayKey = isoKey(new Date());
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    cells.push({
+      date: d,
+      inMonth: d.getMonth() === month,
+      isToday: isoKey(d) === todayKey
+    });
+  }
+  return cells;
+}
+
 function WeekCalendar() {
-  const monday = getMonday(new Date());
-  const days = Array.from({ length: 5 }, (_, i) => {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    return d;
+  const today = new Date();
+  const [cursor, setCursor] = useState({ y: today.getFullYear(), m: today.getMonth() });
+  const [selected, setSelected] = useState<Date>(today);
+
+  const cells = useMemo(() => buildCalendarCells(cursor.y, cursor.m), [cursor]);
+
+  // Count events per date for the calendar dots
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, CalEvent[]>();
+    for (const e of MONTH_EVENTS) {
+      const list = map.get(e.date) ?? [];
+      list.push(e);
+      map.set(e.date, list);
+    }
+    return map;
+  }, []);
+
+  const selectedKey = isoKey(selected);
+  const selectedEvents = (eventsByDate.get(selectedKey) ?? []).sort((a, b) => a.time.localeCompare(b.time));
+
+  const monthLabel = new Date(cursor.y, cursor.m, 1).toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric"
   });
+
+  const goPrev = () => {
+    const d = new Date(cursor.y, cursor.m - 1, 1);
+    setCursor({ y: d.getFullYear(), m: d.getMonth() });
+  };
+  const goNext = () => {
+    const d = new Date(cursor.y, cursor.m + 1, 1);
+    setCursor({ y: d.getFullYear(), m: d.getMonth() });
+  };
+  const goToday = () => {
+    const now = new Date();
+    setCursor({ y: now.getFullYear(), m: now.getMonth() });
+    setSelected(now);
+  };
+
+  const totalThisMonth = MONTH_EVENTS.filter((e) => {
+    const d = new Date(e.date);
+    return d.getFullYear() === cursor.y && d.getMonth() === cursor.m;
+  }).length;
+
   return (
     <section className="mt-12">
       <div className="flex items-baseline justify-between">
-        <SectionLabel count="this week">Calendar</SectionLabel>
-        <span className="font-mono text-[10.5px] tracking-[0.06em] text-[#78716C]">
-          {WEEK_EVENTS.length} events · {WEEK_EVENTS.filter((e) => e.unassigned).length} unassigned
-        </span>
+        <SectionLabel count={`${totalThisMonth} this month`}>Calendar</SectionLabel>
+        <button
+          type="button"
+          onClick={goToday}
+          className="font-mono text-[10px] uppercase tracking-[0.12em] transition-colors hover:text-[#1A1612]"
+          style={{ color: MUTED }}
+        >
+          Today
+        </button>
       </div>
-      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
-        {days.map((d, i) => {
-          const isToday =
-            d.toDateString() === new Date().toDateString();
-          const dayEvents = WEEK_EVENTS.filter((e) => e.day === i);
-          return (
-            <div
-              key={i}
-              className="overflow-hidden rounded-[4px] border bg-white"
-              style={{ borderColor: BORDER }}
-            >
-              <div
-                className="flex items-baseline justify-between border-b px-3 py-2"
-                style={{ borderColor: BORDER, background: isToday ? "rgba(184,84,61,0.04)" : "transparent" }}
-              >
-                <div>
-                  <div className="font-mono text-[9px] uppercase tracking-[0.14em]" style={{ color: MUTED }}>
-                    {d.toLocaleDateString("en-US", { weekday: "short" })}
-                  </div>
-                  <div className="font-serif text-[18px] leading-tight" style={{ color: INK }}>
-                    {d.getDate()}
-                  </div>
-                </div>
-                {isToday ? (
-                  <span
-                    className="rounded-[3px] px-1.5 py-[2px] font-mono text-[9px] uppercase tracking-[0.1em]"
-                    style={{ color: RUST, background: RUST_TINT }}
-                  >
-                    Today
-                  </span>
-                ) : null}
+
+      <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+        {/* LEFT — month grid */}
+        <div className="overflow-hidden rounded-[4px] border bg-white" style={{ borderColor: BORDER }}>
+          <div className="flex items-center justify-between border-b px-4 py-3" style={{ borderColor: BORDER }}>
+            <div>
+              <div className="font-mono text-[9px] uppercase tracking-[0.16em]" style={{ color: MUTED }}>
+                month
               </div>
-              <div className="min-h-[120px] space-y-1.5 p-2">
-                {dayEvents.length === 0 ? (
-                  <div className="px-2 py-3 font-mono text-[10px]" style={{ color: MUTED_2 }}>
-                    nothing scheduled
-                  </div>
-                ) : (
-                  dayEvents.map((e, j) => (
-                    <div
-                      key={j}
-                      className="rounded-[3px] px-2 py-1.5"
-                      style={{
-                        background: e.unassigned ? "rgba(194,136,64,0.10)" : "rgba(184,84,61,0.06)",
-                        borderLeft: `2px solid ${e.unassigned ? "#C28840" : RUST}`
-                      }}
-                    >
-                      <div className="font-mono text-[9px] uppercase tracking-[0.1em]" style={{ color: MUTED }}>
-                        {e.time}
-                      </div>
-                      <div className="text-[11.5px] font-medium leading-tight" style={{ color: INK }}>
-                        {e.title}
-                      </div>
-                      <div className="mt-0.5 font-mono text-[9px]" style={{ color: MUTED }}>
-                        {e.team} · {e.attendees}p
-                      </div>
-                    </div>
-                  ))
-                )}
+              <div className="font-serif text-[18px] leading-tight" style={{ color: INK }}>
+                {monthLabel}
               </div>
             </div>
-          );
-        })}
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={goPrev}
+                aria-label="Previous month"
+                className="flex h-7 w-7 items-center justify-center rounded-[3px] border hover:bg-[#FAF8F5]"
+                style={{ borderColor: BORDER, color: MUTED }}
+              >
+                <TbChevronRight size={14} style={{ transform: "rotate(180deg)" }} />
+              </button>
+              <button
+                type="button"
+                onClick={goNext}
+                aria-label="Next month"
+                className="flex h-7 w-7 items-center justify-center rounded-[3px] border hover:bg-[#FAF8F5]"
+                style={{ borderColor: BORDER, color: MUTED }}
+              >
+                <TbChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+
+          {/* Weekday headers */}
+          <div className="grid grid-cols-7 border-b" style={{ borderColor: BORDER }}>
+            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
+              <div
+                key={d}
+                className="px-2 py-2 text-center font-mono text-[9px] uppercase tracking-[0.14em]"
+                style={{ color: MUTED }}
+              >
+                {d}
+              </div>
+            ))}
+          </div>
+
+          {/* Day cells */}
+          <div className="grid grid-cols-7">
+            {cells.map((cell, i) => {
+              const key = isoKey(cell.date);
+              const evs = eventsByDate.get(key) ?? [];
+              const isSelected = key === selectedKey;
+              const hasUnassigned = evs.some((e) => e.unassigned);
+              const dotCount = Math.min(4, evs.length);
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setSelected(cell.date)}
+                  className="relative flex flex-col items-start justify-between border-r border-b px-2 py-2 text-left transition-colors hover:bg-[#FAF8F5]"
+                  style={{
+                    borderColor: BORDER,
+                    height: 64,
+                    background: isSelected
+                      ? "rgba(184,84,61,0.06)"
+                      : cell.isToday
+                        ? "rgba(184,84,61,0.03)"
+                        : "transparent",
+                    opacity: cell.inMonth ? 1 : 0.35
+                  }}
+                >
+                  {isSelected ? (
+                    <span
+                      aria-hidden
+                      className="absolute inset-0 pointer-events-none"
+                      style={{ boxShadow: `inset 0 0 0 2px ${RUST}` }}
+                    />
+                  ) : null}
+                  <div className="flex w-full items-baseline justify-between">
+                    <span
+                      className="font-mono text-[12px]"
+                      style={{
+                        color: cell.isToday ? RUST : INK,
+                        fontWeight: cell.isToday ? 600 : 400
+                      }}
+                    >
+                      {cell.date.getDate()}
+                    </span>
+                    {cell.isToday ? (
+                      <span
+                        className="rounded-[2px] px-1 font-mono text-[8px] uppercase tracking-[0.12em]"
+                        style={{ color: RUST, background: RUST_TINT }}
+                      >
+                        Now
+                      </span>
+                    ) : null}
+                  </div>
+                  {dotCount > 0 ? (
+                    <div className="flex items-center gap-[3px]">
+                      {Array.from({ length: dotCount }).map((_, j) => (
+                        <span
+                          key={j}
+                          className="inline-block h-[5px] w-[5px] rounded-full"
+                          style={{ background: hasUnassigned && j === 0 ? "#C28840" : RUST }}
+                        />
+                      ))}
+                      {evs.length > 4 ? (
+                        <span className="font-mono text-[8px]" style={{ color: MUTED }}>
+                          +{evs.length - 4}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* RIGHT — events for selected date */}
+        <div className="flex flex-col overflow-hidden rounded-[4px] border bg-white" style={{ borderColor: BORDER }}>
+          <div className="border-b px-4 py-3" style={{ borderColor: BORDER }}>
+            <div className="font-mono text-[9px] uppercase tracking-[0.16em]" style={{ color: MUTED }}>
+              {selected.toDateString() === new Date().toDateString() ? "Today" : "Selected"}
+            </div>
+            <div className="mt-0.5 font-serif text-[20px] leading-tight" style={{ color: INK }}>
+              {selected.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+            </div>
+            <div className="mt-1 font-mono text-[10px]" style={{ color: MUTED }}>
+              {selectedEvents.length === 0
+                ? "nothing scheduled"
+                : `${selectedEvents.length} event${selectedEvents.length === 1 ? "" : "s"} · ${selectedEvents.filter((e) => e.unassigned).length} unassigned`}
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto" style={{ maxHeight: 380 }}>
+            {selectedEvents.length === 0 ? (
+              <div className="flex h-full items-center justify-center px-6 py-10 text-center">
+                <div>
+                  <div className="font-serif text-[18px] italic" style={{ color: INK }}>
+                    Clear day.
+                  </div>
+                  <div className="mt-1 font-mono text-[10px]" style={{ color: MUTED }}>
+                    no meetings scheduled
+                  </div>
+                </div>
+              </div>
+            ) : (
+              selectedEvents.map((e, i) => (
+                <div
+                  key={i}
+                  className="grid items-start gap-3 px-4 py-3"
+                  style={{
+                    gridTemplateColumns: "70px 1fr",
+                    borderTop: i === 0 ? "none" : `1px solid ${BORDER}`,
+                    borderLeft: `3px solid ${e.unassigned ? "#C28840" : RUST}`
+                  }}
+                >
+                  <div>
+                    <div className="font-mono text-[12px]" style={{ color: INK }}>
+                      {e.time}
+                    </div>
+                    <div className="font-mono text-[9.5px]" style={{ color: MUTED }}>
+                      {e.duration}
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[13px] font-medium" style={{ color: INK }}>
+                        {e.title}
+                      </span>
+                      {e.unassigned ? (
+                        <span
+                          className="rounded-[2px] px-1.5 py-[1px] font-mono text-[9px] uppercase tracking-[0.1em]"
+                          style={{ background: "rgba(194,136,64,0.16)", color: "#8C5D1E" }}
+                        >
+                          unassigned
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="mt-1 font-mono text-[10px]" style={{ color: MUTED }}>
+                      {e.team} · {e.room} · {e.attendees.length}p
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="flex -space-x-1.5">
+                        {e.attendees.slice(0, 5).map((a) => {
+                          const initials = a
+                            .split(" ")
+                            .map((p) => p[0])
+                            .join("")
+                            .slice(0, 2);
+                          return (
+                            <InitialsAvatar key={a} name={a} initials={initials} size={20} ring="#FFFFFF" />
+                          );
+                        })}
+                      </div>
+                      {e.attendees.length > 5 ? (
+                        <span className="font-mono text-[9.5px]" style={{ color: MUTED }}>
+                          +{e.attendees.length - 5}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       </div>
     </section>
   );
