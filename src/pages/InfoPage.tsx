@@ -960,8 +960,13 @@ function fmtUSDPrecise(n: number): string {
   return "$" + n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
 
-function ActiveSubscriptions() {
-  const [subs, setSubs] = useState<Subscription[]>(INITIAL_SUBS);
+function ActiveSubscriptions({
+  subs,
+  setSubs
+}: {
+  subs: Subscription[];
+  setSubs: React.Dispatch<React.SetStateAction<Subscription[]>>;
+}) {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({
     name: "",
@@ -1330,6 +1335,484 @@ function RecentChanges() {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Team composition — visual band above the people grid
+// ────────────────────────────────────────────────────────────────────────────
+
+const TEAM_TONE: Record<Team, string> = {
+  Engineering: "#3B82C4",
+  Design: "#B8543D",
+  Product: "#7A8C5F",
+  GTM: "#C28840",
+  Ops: "#8B7FD4"
+};
+
+function TeamComposition() {
+  // Roll up people by team
+  const byTeam = useMemo(() => {
+    const map = new Map<Team, Person[]>();
+    for (const p of people) {
+      const list = map.get(p.team) ?? [];
+      list.push(p);
+      map.set(p.team, list);
+    }
+    return Array.from(map.entries()).sort((a, b) => b[1].length - a[1].length);
+  }, []);
+
+  // Roll up tool usage
+  const byTool = useMemo(() => {
+    const map = new Map<Person["tool"], number>();
+    for (const p of people) map.set(p.tool, (map.get(p.tool) ?? 0) + 1);
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+  }, []);
+
+  // Workload distribution
+  const workload = useMemo(() => {
+    const map: Record<WorkloadLevel, number> = { light: 0, balanced: 0, high: 0, overloaded: 0 };
+    for (const p of people) map[p.workload]++;
+    return map;
+  }, []);
+
+  const total = people.length;
+  const overloadedCount = workload.overloaded + workload.high;
+  const avgWorkloadPct = Math.round(people.reduce((s, p) => s + p.workloadPct, 0) / total);
+
+  return (
+    <section className="mb-6">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.2fr_1fr_1fr]">
+        {/* Headcount + team stacked bar */}
+        <div className="rounded-[4px] border bg-white p-4" style={{ borderColor: BORDER }}>
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="font-mono text-[9px] uppercase tracking-[0.16em]" style={{ color: MUTED }}>
+                Headcount · by team
+              </div>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="font-serif text-[32px] leading-none tracking-tight" style={{ color: INK }}>
+                  {total}
+                </span>
+                <span className="font-mono text-[10px]" style={{ color: MUTED }}>active</span>
+              </div>
+            </div>
+            <div className="flex -space-x-1.5">
+              {people.slice(0, 6).map((p) => (
+                <TeamAvatar key={p.id} name={p.name} initials={p.initials} size={26} ring="#FFFFFF" />
+              ))}
+              {people.length > 6 ? (
+                <div
+                  className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-full border-2 border-white font-mono text-[9px]"
+                  style={{ background: "rgba(26,22,18,0.08)", color: MUTED }}
+                >
+                  +{people.length - 6}
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Stacked bar */}
+          <div className="mt-4 flex h-2 overflow-hidden rounded-full" style={{ background: "rgba(26,22,18,0.06)" }}>
+            {byTeam.map(([team, list]) => (
+              <motion.span
+                key={team}
+                initial={{ width: 0 }}
+                animate={{ width: `${(list.length / total) * 100}%` }}
+                transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+                style={{ background: TEAM_TONE[team], display: "block", height: "100%" }}
+              />
+            ))}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+            {byTeam.map(([team, list]) => (
+              <div key={team} className="flex items-center gap-1.5 font-mono text-[10px]" style={{ color: MUTED }}>
+                <span
+                  className="inline-block h-1.5 w-1.5 rounded-full"
+                  style={{ background: TEAM_TONE[team] }}
+                />
+                <span style={{ color: INK }}>{team}</span>
+                <span>· {list.length}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Tool spread */}
+        <div className="rounded-[4px] border bg-white p-4" style={{ borderColor: BORDER }}>
+          <div className="font-mono text-[9px] uppercase tracking-[0.16em]" style={{ color: MUTED }}>
+            Tools · by adoption
+          </div>
+          <div className="mt-3 space-y-2">
+            {byTool.map(([tool, n]) => {
+              const tone = TOOL_TONE[tool];
+              const pct = (n / total) * 100;
+              return (
+                <div key={tool} className="flex items-center gap-3">
+                  <span
+                    className="flex h-5 w-12 flex-shrink-0 items-center justify-center rounded-[3px] font-mono text-[9px] uppercase tracking-[0.08em]"
+                    style={{ background: tone.bg, color: tone.fg }}
+                  >
+                    {tone.mark} {tool}
+                  </span>
+                  <div className="flex-1 h-1.5 overflow-hidden rounded-full" style={{ background: "rgba(26,22,18,0.06)" }}>
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${pct}%` }}
+                      transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+                      style={{ height: "100%", background: tone.fg, opacity: 0.7 }}
+                    />
+                  </div>
+                  <span className="w-6 text-right font-mono text-[10.5px]" style={{ color: INK }}>
+                    {n}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Workload distribution */}
+        <div className="rounded-[4px] border bg-white p-4" style={{ borderColor: BORDER }}>
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="font-mono text-[9px] uppercase tracking-[0.16em]" style={{ color: MUTED }}>
+                Avg load
+              </div>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span
+                  className="font-serif text-[32px] leading-none tracking-tight"
+                  style={{ color: avgWorkloadPct >= 95 ? "#9E3B2E" : avgWorkloadPct >= 80 ? "#C28840" : INK }}
+                >
+                  {avgWorkloadPct}%
+                </span>
+                <span className="font-mono text-[10px]" style={{ color: MUTED }}>
+                  {overloadedCount > 0 ? `${overloadedCount} hot` : "balanced"}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 space-y-1.5">
+            {(["overloaded", "high", "balanced", "light"] as WorkloadLevel[]).map((lvl) => {
+              const n = workload[lvl];
+              const pct = total > 0 ? (n / total) * 100 : 0;
+              return (
+                <div key={lvl} className="flex items-center gap-2">
+                  <span className="w-20 font-mono text-[9.5px] uppercase tracking-[0.08em]" style={{ color: MUTED }}>
+                    {lvl}
+                  </span>
+                  <div className="flex-1 h-1.5 overflow-hidden rounded-full" style={{ background: "rgba(26,22,18,0.06)" }}>
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${pct}%` }}
+                      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                      style={{ height: "100%", background: WORKLOAD_COLORS[lvl] }}
+                    />
+                  </div>
+                  <span className="w-6 text-right font-mono text-[10.5px]" style={{ color: INK }}>
+                    {n}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Money pane — owns the subscription state shared by analytics + table
+// ────────────────────────────────────────────────────────────────────────────
+
+function MoneyPane() {
+  const [subs, setSubs] = useState<Subscription[]>(INITIAL_SUBS);
+  return (
+    <>
+      <MoneyAnalytics subs={subs} />
+      <ActiveSubscriptions subs={subs} setSubs={setSubs} />
+    </>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Money analytics — burn line, category bar, top vendors, renewals
+// ────────────────────────────────────────────────────────────────────────────
+
+function MoneyAnalytics({ subs }: { subs: Subscription[] }) {
+  // Synthesize a 12-month burn line ending at current monthly total
+  const monthlyTotal = subs.reduce((s, x) => s + x.monthlyPerSeat * x.seats, 0);
+  const burnLine = useMemo(() => {
+    const months = 12;
+    const arr: number[] = [];
+    let val = monthlyTotal * 0.55;
+    for (let i = 0; i < months; i++) {
+      const growth = 1 + 0.045 + Math.sin(i * 0.7) * 0.02;
+      val = val * growth;
+      arr.push(Math.round(val));
+    }
+    arr[arr.length - 1] = Math.round(monthlyTotal);
+    return arr;
+  }, [monthlyTotal]);
+
+  // Category breakdown
+  const byCat = useMemo(() => {
+    const map = new Map<Subscription["category"], number>();
+    for (const s of subs) map.set(s.category, (map.get(s.category) ?? 0) + s.monthlyPerSeat * s.seats);
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+  }, [subs]);
+
+  // Top 5 vendors by monthly spend
+  const topVendors = useMemo(() => {
+    return [...subs].sort((a, b) => (b.monthlyPerSeat * b.seats) - (a.monthlyPerSeat * a.seats)).slice(0, 5);
+  }, [subs]);
+
+  // Renewals in the next 60 days
+  const renewals = useMemo(() => {
+    const now = new Date();
+    const limit = new Date(now);
+    limit.setDate(limit.getDate() + 60);
+    return subs
+      .filter((s) => s.renewal !== "rolling")
+      .map((s) => ({ sub: s, days: Math.ceil((new Date(s.renewal).getTime() - now.getTime()) / 86400000) }))
+      .filter((r) => r.days >= -7 && r.days <= 60)
+      .sort((a, b) => a.days - b.days);
+  }, [subs]);
+
+  const maxBurn = Math.max(...burnLine);
+  const minBurn = Math.min(...burnLine);
+  const W = 100;
+  const H = 50;
+  const burnPoints = burnLine
+    .map((v, i) => `${(i / (burnLine.length - 1)) * W},${H - ((v - minBurn) / (maxBurn - minBurn || 1)) * (H - 4) - 2}`)
+    .join(" ");
+  const areaPoints = `${burnPoints} ${W},${H} 0,${H}`;
+
+  return (
+    <section className="mt-6">
+      <SectionLabel>Spend analytics</SectionLabel>
+      <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[1.4fr_1fr]">
+        {/* Burn trend */}
+        <div className="rounded-[4px] border bg-white p-5" style={{ borderColor: BORDER }}>
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="font-mono text-[9px] uppercase tracking-[0.16em]" style={{ color: MUTED }}>
+                Monthly burn · last 12 months
+              </div>
+              <div className="mt-1 flex items-baseline gap-3">
+                <span className="font-serif text-[28px] leading-none tracking-tight" style={{ color: INK }}>
+                  {fmtUSDPrecise(burnLine[burnLine.length - 1])}
+                </span>
+                <span className="font-mono text-[10px] uppercase tracking-[0.1em]" style={{ color: "#5A6B47" }}>
+                  ↑ {Math.round(((burnLine[burnLine.length - 1] - burnLine[0]) / burnLine[0]) * 100)}% YoY
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-col items-end font-mono text-[10px]" style={{ color: MUTED }}>
+              <span>peak · {fmtUSDPrecise(maxBurn)}</span>
+              <span>low · {fmtUSDPrecise(minBurn)}</span>
+            </div>
+          </div>
+
+          <div className="mt-4 relative" style={{ height: 130 }}>
+            <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" width="100%" height="100%">
+              <defs>
+                <linearGradient id="burnArea" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={RUST} stopOpacity="0.18" />
+                  <stop offset="100%" stopColor={RUST} stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              <polygon points={areaPoints} fill="url(#burnArea)" />
+              <polyline
+                points={burnPoints}
+                fill="none"
+                stroke={RUST}
+                strokeWidth="0.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              {burnLine.map((v, i) => {
+                const x = (i / (burnLine.length - 1)) * W;
+                const y = H - ((v - minBurn) / (maxBurn - minBurn || 1)) * (H - 4) - 2;
+                return <circle key={i} cx={x} cy={y} r="0.5" fill={RUST} />;
+              })}
+            </svg>
+            <div className="absolute inset-x-0 bottom-0 flex justify-between font-mono text-[9px]" style={{ color: MUTED }}>
+              {(() => {
+                const labels: string[] = [];
+                for (let i = 11; i >= 0; i--) {
+                  const d = new Date();
+                  d.setMonth(d.getMonth() - i);
+                  labels.push(d.toLocaleDateString("en-US", { month: "short" }));
+                }
+                return [labels[0], labels[5], labels[11]].map((m, i) => <span key={i}>{m}</span>);
+              })()}
+            </div>
+          </div>
+        </div>
+
+        {/* Category share */}
+        <div className="rounded-[4px] border bg-white p-5" style={{ borderColor: BORDER }}>
+          <div className="font-mono text-[9px] uppercase tracking-[0.16em]" style={{ color: MUTED }}>
+            Spend · by category
+          </div>
+          <div className="mt-3 flex h-2 overflow-hidden rounded-full" style={{ background: "rgba(26,22,18,0.06)" }}>
+            {byCat.map(([cat, amt]) => {
+              const tone = CATEGORY_TONES[cat];
+              const pct = (amt / monthlyTotal) * 100;
+              return (
+                <motion.span
+                  key={cat}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${pct}%` }}
+                  transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+                  style={{ background: tone.fg, display: "block", height: "100%" }}
+                />
+              );
+            })}
+          </div>
+          <div className="mt-3 space-y-1.5">
+            {byCat.map(([cat, amt]) => {
+              const tone = CATEGORY_TONES[cat];
+              const pct = ((amt / monthlyTotal) * 100).toFixed(0);
+              return (
+                <div key={cat} className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="inline-block h-1.5 w-1.5 rounded-full"
+                      style={{ background: tone.fg }}
+                    />
+                    <span className="font-mono text-[10.5px] capitalize" style={{ color: INK }}>{cat}</span>
+                  </div>
+                  <div className="flex items-baseline gap-2 font-mono text-[10.5px]">
+                    <span style={{ color: MUTED }}>{pct}%</span>
+                    <span style={{ color: INK }}>{fmtUSDPrecise(Math.round(amt))}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Top vendors + renewals */}
+      <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr]">
+        <div className="rounded-[4px] border bg-white p-5" style={{ borderColor: BORDER }}>
+          <div className="font-mono text-[9px] uppercase tracking-[0.16em]" style={{ color: MUTED }}>
+            Top vendors · by monthly spend
+          </div>
+          <div className="mt-3 space-y-2.5">
+            {(() => {
+              const max = Math.max(...topVendors.map((v) => v.monthlyPerSeat * v.seats));
+              return topVendors.map((v, i) => {
+                const amt = v.monthlyPerSeat * v.seats;
+                const pct = (amt / max) * 100;
+                const tone = CATEGORY_TONES[v.category];
+                return (
+                  <div key={v.id} className="flex items-center gap-3">
+                    <span className="w-5 font-mono text-[10px]" style={{ color: MUTED }}>
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-[12.5px]" style={{ color: INK }}>{v.name}</span>
+                        <span className="flex-shrink-0 font-mono text-[11px]" style={{ color: INK }}>
+                          {fmtUSDPrecise(Math.round(amt))}
+                        </span>
+                      </div>
+                      <div className="mt-1 h-1 overflow-hidden rounded-full" style={{ background: "rgba(26,22,18,0.06)" }}>
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${pct}%` }}
+                          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+                          style={{ height: "100%", background: tone.fg, opacity: 0.8 }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        </div>
+
+        {/* Renewals timeline (next 60 days) */}
+        <div className="rounded-[4px] border bg-white p-5" style={{ borderColor: BORDER }}>
+          <div className="flex items-baseline justify-between">
+            <div className="font-mono text-[9px] uppercase tracking-[0.16em]" style={{ color: MUTED }}>
+              Renewals · next 60d
+            </div>
+            <span className="font-mono text-[10px]" style={{ color: MUTED_2 }}>
+              {renewals.length} upcoming
+            </span>
+          </div>
+          {renewals.length === 0 ? (
+            <div className="mt-6 text-center font-serif text-[16px] italic" style={{ color: MUTED }}>
+              No renewals on the radar.
+            </div>
+          ) : (
+            <>
+              <div className="relative mt-5 h-10">
+                <div className="absolute inset-x-0 top-1/2 h-px" style={{ background: BORDER }} />
+                {[0, 15, 30, 45, 60].map((d) => {
+                  const left = (d / 60) * 100;
+                  return (
+                    <div
+                      key={d}
+                      className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
+                      style={{ left: `${left}%` }}
+                    >
+                      <span className="block h-2 w-px" style={{ background: BORDER }} />
+                      <span className="mt-1 block font-mono text-[8.5px] uppercase tracking-[0.1em]" style={{ color: MUTED_2 }}>
+                        {d === 0 ? "today" : `+${d}d`}
+                      </span>
+                    </div>
+                  );
+                })}
+                {renewals.slice(0, 8).map((r) => {
+                  const left = Math.max(0, Math.min(100, (r.days / 60) * 100));
+                  const urgent = r.days <= 14;
+                  const past = r.days < 0;
+                  return (
+                    <div
+                      key={r.sub.id}
+                      className="absolute -translate-x-1/2"
+                      style={{ left: `${left}%`, top: -2 }}
+                      title={`${r.sub.name} · ${r.sub.renewal}`}
+                    >
+                      <span
+                        className="block h-3 w-3 rounded-full border-2 border-white"
+                        style={{ background: past ? "#9E3B2E" : urgent ? "#C28840" : RUST }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-3 space-y-1.5">
+                {renewals.slice(0, 5).map((r) => {
+                  const urgent = r.days <= 14;
+                  return (
+                    <div key={r.sub.id} className="flex items-center justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span
+                          className="inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full"
+                          style={{ background: urgent ? "#C28840" : RUST }}
+                        />
+                        <span className="truncate text-[12px]" style={{ color: INK }}>{r.sub.name}</span>
+                      </div>
+                      <span className="flex-shrink-0 font-mono text-[10.5px]" style={{ color: urgent ? "#8C5D1E" : MUTED }}>
+                        {r.days < 0 ? `${Math.abs(r.days)}d overdue` : r.days === 0 ? "today" : `in ${r.days}d`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Tabbed dashboard nav — slides a rust underline between tabs
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -1598,6 +2081,10 @@ export default function InfoPage() {
 
               {activeTab === "team" ? (
                 <>
+                  <motion.div variants={SECTION_VARIANTS}>
+                    <TeamComposition />
+                  </motion.div>
+
                   <motion.section variants={SECTION_VARIANTS} className="grid gap-8" style={{ gridTemplateColumns: "minmax(0, 3fr) minmax(0, 2fr)" }}>
                     {/* People column */}
                     <div>
@@ -1791,7 +2278,7 @@ export default function InfoPage() {
 
               {activeTab === "money" ? (
                 <motion.div variants={SECTION_VARIANTS}>
-                  <ActiveSubscriptions />
+                  <MoneyPane />
                 </motion.div>
               ) : null}
             </motion.div>
@@ -2038,6 +2525,82 @@ const TOOL_LABEL: Record<Person["tool"], string> = {
   linear: "linear"
 };
 
+const TOOL_TONE: Record<Person["tool"], { bg: string; fg: string; mark: string }> = {
+  vscode: { bg: "rgba(59,130,196,0.14)", fg: "#3B82C4", mark: "VS" },
+  cursor: { bg: "rgba(26,22,18,0.10)", fg: "#1A1612", mark: "C" },
+  claude: { bg: "rgba(184,84,61,0.12)", fg: "#B8543D", mark: "Σ" },
+  figma:  { bg: "rgba(184,84,61,0.10)", fg: "#B8543D", mark: "F" },
+  notion: { bg: "rgba(26,22,18,0.08)", fg: "#1A1612", mark: "N" },
+  linear: { bg: "rgba(94,106,210,0.14)", fg: "#5E6AD2", mark: "L" }
+};
+
+const STATUS_DOT: Record<Person["status"], { color: string; label: string }> = {
+  active:    { color: "#7A8C5F", label: "Active" },
+  "on-leave": { color: "#C28840", label: "On leave" },
+  new:       { color: "#5E7A8C", label: "New" }
+};
+
+function TeamAvatar({ name, initials, size = 40, status, ring }: { name: string; initials: string; size?: number; status?: Person["status"]; ring?: string }) {
+  // Deterministic warm gradient pair from name
+  const palette: [string, string][] = [
+    ["#E8DCC4", "#D6C3A4"],
+    ["#E6CFC0", "#D8B9A4"],
+    ["#D9CCC0", "#BFAEA0"],
+    ["#D6D0C2", "#B8B0A0"],
+    ["#E2D2BC", "#C9B69A"],
+    ["#CCC6BA", "#A8A19A"],
+    ["#E0C4B2", "#B8967E"],
+    ["#CFC9BF", "#A6A0A0"]
+  ];
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  const [c1, c2] = palette[h % palette.length];
+  const statusInfo = status ? STATUS_DOT[status] : null;
+  return (
+    <div
+      title={name}
+      className="relative flex-shrink-0"
+      style={{ width: size, height: size }}
+    >
+      <div
+        style={{
+          width: size,
+          height: size,
+          borderRadius: "50%",
+          background: `radial-gradient(circle at 30% 30%, ${c1}, ${c2})`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: INK,
+          fontFamily: "Geist, sans-serif",
+          fontSize: Math.round(size * 0.36),
+          fontWeight: 500,
+          letterSpacing: "0.01em",
+          boxShadow: ring ? `0 0 0 2px ${ring}` : "inset 0 1px 0 rgba(255,255,255,0.4)"
+        }}
+      >
+        {initials}
+      </div>
+      {statusInfo ? (
+        <span
+          aria-hidden
+          title={statusInfo.label}
+          style={{
+            position: "absolute",
+            right: -1,
+            bottom: -1,
+            width: Math.max(8, size * 0.22),
+            height: Math.max(8, size * 0.22),
+            borderRadius: "50%",
+            background: statusInfo.color,
+            border: "2px solid #FFFFFF"
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 function PersonCard({
   person,
   onClick,
@@ -2050,32 +2613,77 @@ function PersonCard({
   onAsk: () => void;
 }) {
   const [hover, setHover] = useState(false);
+  const tool = TOOL_TONE[person.tool];
+  const wlColor = WORKLOAD_COLORS[person.workload];
   return (
-    <div
+    <motion.div
       onClick={onClick}
       onContextMenu={onContextMenu}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      className="group relative cursor-pointer rounded-[4px] border p-3 transition-colors"
+      whileHover={{ y: -2 }}
+      transition={{ type: "spring", stiffness: 320, damping: 26 }}
+      className="group relative cursor-pointer overflow-hidden rounded-[4px] border transition-colors"
       style={{
         borderColor: hover ? BORDER_HOVER : BORDER,
-        background: SURFACE
+        background: SURFACE,
+        boxShadow: hover ? "0 6px 18px rgba(26,22,18,0.06)" : "none"
       }}
     >
-      <div className="flex items-start gap-2.5">
-        <InitialsAvatar name={person.name} initials={person.initials} size={32} />
+      {/* Top: avatar + identity + tool badge */}
+      <div className="flex items-start gap-3 p-3">
+        <TeamAvatar
+          name={person.name}
+          initials={person.initials}
+          size={42}
+          status={person.status}
+        />
         <div className="min-w-0 flex-1">
-          <p className="truncate font-sans text-[13px] font-medium text-[#1A1612]">{person.name}</p>
-          <p className="truncate font-sans text-[11.5px] text-[#78716C]">{person.role}</p>
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="truncate font-sans text-[13px] font-medium text-[#1A1612]">{person.name}</p>
+              <p className="truncate font-sans text-[11px] text-[#78716C]">{person.role}</p>
+            </div>
+            <span
+              className="flex h-5 flex-shrink-0 items-center gap-1 rounded-[3px] px-1.5 font-mono text-[9px] uppercase tracking-[0.1em]"
+              style={{ background: tool.bg, color: tool.fg }}
+              title={`tool: ${TOOL_LABEL[person.tool]}`}
+            >
+              <span className="font-bold">{tool.mark}</span>
+              <span>{TOOL_LABEL[person.tool]}</span>
+            </span>
+          </div>
         </div>
       </div>
-      <p className="mt-2.5 truncate font-mono text-[10.5px] text-[#5A5450]" title={person.currentFocus}>
-        {person.currentFocus}
+
+      {/* Current focus */}
+      <p className="-mt-1 truncate px-3 font-mono text-[10.5px] text-[#5A5450]" title={person.currentFocus}>
+        ↳ {person.currentFocus}
       </p>
-      <div className="mt-2.5">
-        <WorkloadBar level={person.workload} pct={person.workloadPct} />
-        <div className="mt-1.5 flex items-center justify-between font-mono text-[9.5px] tracking-[0.04em] text-[#78716C]">
-          <span>{TOOL_LABEL[person.tool]}</span>
+
+      {/* Workload bar with percentage badge */}
+      <div className="mt-2.5 px-3">
+        <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.08em]">
+          <span style={{ color: MUTED }}>workload</span>
+          <span style={{ color: wlColor }}>
+            {person.workloadPct}% · {person.workload}
+          </span>
+        </div>
+        <div className="mt-1 h-[5px] overflow-hidden rounded-full" style={{ background: "rgba(26,22,18,0.06)" }}>
+          <motion.div
+            initial={{ width: 0 }}
+            animate={{ width: `${Math.min(130, person.workloadPct)}%` }}
+            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            style={{ height: "100%", background: wlColor }}
+          />
+        </div>
+      </div>
+
+      {/* 8-week sparkline */}
+      <div className="mt-2 px-3 pb-3">
+        <Sparkline data={person.workloadTrend} width={260} height={28} stroke={wlColor} />
+        <div className="mt-1 flex items-center justify-between font-mono text-[9.5px] tracking-[0.04em] text-[#78716C]">
+          <span>last 8w</span>
           <span>{person.lastActive}</span>
         </div>
       </div>
@@ -2087,8 +2695,8 @@ function PersonCard({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 2 }}
             transition={{ duration: 0.14 }}
-            className="absolute inset-x-0 -bottom-[1px] flex divide-x rounded-b-[4px] border-x border-b bg-white"
-            style={{ borderColor: BORDER_HOVER, ['--tw-divide-x-reverse' as any]: 0, ['--tw-divide-opacity' as any]: 1 }}
+            className="absolute inset-x-0 -bottom-[1px] flex rounded-b-[4px] border-x border-b bg-white"
+            style={{ borderColor: BORDER_HOVER }}
           >
             {[
               { label: "Assign", action: (e: React.MouseEvent) => { e.stopPropagation(); } },
@@ -2099,7 +2707,7 @@ function PersonCard({
                 key={q.label}
                 type="button"
                 onClick={q.action}
-                className="flex-1 py-1.5 font-mono text-[10px] tracking-[0.08em] text-[#78716C] hover:text-[#B8543D]"
+                className="flex-1 py-1.5 font-mono text-[10px] tracking-[0.08em] text-[#78716C] transition-colors hover:text-[#B8543D]"
                 style={{ borderLeft: i === 0 ? "none" : `1px solid ${BORDER}` }}
               >
                 {q.label}
@@ -2108,7 +2716,7 @@ function PersonCard({
           </motion.div>
         ) : null}
       </AnimatePresence>
-    </div>
+    </motion.div>
   );
 }
 
