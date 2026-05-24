@@ -8,7 +8,6 @@ import {
   CodeIcon,
   FileDescriptionIcon,
   GitBranchIcon,
-  LayoutDashboardIcon,
   SettingsIcon,
   SparklesIcon
 } from "../ui/AppIcons";
@@ -170,13 +169,6 @@ export function NavBar({ expanded, onExpandedChange }: NavBarProps) {
       icon: <SocratesIcon />,
       route: `/projects/${currentProjectId}/socrates`,
       active: new RegExp(`^/projects/${currentProjectId}/socrates$`).test(pathname)
-    },
-    {
-      key: "dashboard",
-      label: "DASHBOARD",
-      icon: <LayoutDashboardIcon />,
-      route: `/projects/${currentProjectId}`,
-      active: new RegExp(`^/projects/${currentProjectId}$`).test(pathname)
     },
     {
       key: "codebase",
