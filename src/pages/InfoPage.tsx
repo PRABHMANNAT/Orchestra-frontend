@@ -210,6 +210,262 @@ const TEAM_TABS: ("All" | Team)[] = ["All", "Engineering", "Design", "Product", 
 type WorkloadFilter = null | "overloaded" | "available" | "on-leave" | "new";
 type ProjectSort = "health" | "deadline" | "team";
 
+// ────────────────────────────────────────────────────────────────────────────
+// Dashboard-style sections (subscriptions, calendar, recent changes)
+// Folded into Info page; the dedicated Dashboard route has been removed.
+// ────────────────────────────────────────────────────────────────────────────
+
+type WeekEvent = {
+  day: number; // 0–4 Mon–Fri
+  time: string;
+  title: string;
+  team: string;
+  attendees: number;
+  unassigned?: boolean;
+};
+
+const WEEK_EVENTS: WeekEvent[] = [
+  { day: 0, time: "09:30", title: "Northstar standup", team: "Engineering", attendees: 6 },
+  { day: 0, time: "14:00", title: "Aurora migration review", team: "Platform", attendees: 4 },
+  { day: 0, time: "16:00", title: "1:1 · Adhiraj", team: "Engineering", attendees: 2 },
+  { day: 1, time: "10:00", title: "Design review · onboarding v3", team: "Design", attendees: 5 },
+  { day: 1, time: "13:00", title: "Acme QBR", team: "Customer", attendees: 4, unassigned: true },
+  { day: 2, time: "09:00", title: "Standup", team: "Engineering", attendees: 6 },
+  { day: 2, time: "11:00", title: "Pricing committee", team: "GTM", attendees: 7 },
+  { day: 2, time: "15:00", title: "Security review", team: "Engineering", attendees: 3, unassigned: true },
+  { day: 3, time: "11:00", title: "RFC walk · edge cache", team: "Engineering", attendees: 5 },
+  { day: 3, time: "14:00", title: "Hiring loop debrief", team: "Ops", attendees: 4 },
+  { day: 4, time: "10:00", title: "All-hands prep", team: "All", attendees: 8, unassigned: true },
+  { day: 4, time: "13:00", title: "Apollo data residency", team: "Platform", attendees: 3 },
+  { day: 4, time: "15:30", title: "Investor update review", team: "GTM", attendees: 4 }
+];
+
+type RecentChange = {
+  kind: "ship" | "decision" | "doc" | "blocker" | "person";
+  who: string;
+  what: string;
+  project: string;
+  when: string;
+};
+
+const RECENT_CHANGES: RecentChange[] = [
+  { kind: "ship", who: "Kartikeya", what: "Auth middleware refactor merged", project: "Northstar Cloud", when: "12m ago" },
+  { kind: "decision", who: "Pricing committee", what: "Yearly default + monthly opt-in ratified", project: "GTM", when: "38m ago" },
+  { kind: "doc", who: "Adhiraj", what: "RFC · Edge cache layer (draft)", project: "Northstar Cloud", when: "1h ago" },
+  { kind: "blocker", who: "Yuki", what: "Backfill job blowing memory on prod", project: "Analytics pipeline", when: "1h ago" },
+  { kind: "ship", who: "Sarah", what: "Onboarding v3 empty states shipped", project: "Onboarding Redesign", when: "2h ago" },
+  { kind: "ship", who: "Prabh", what: "Billing webhook handler · idempotency fix", project: "Payments v2", when: "3h ago" },
+  { kind: "person", who: "Yuki Sato", what: "joined Platform team", project: "—", when: "4h ago" },
+  { kind: "decision", who: "Hiroshi", what: "Aurora geo-replication regions: us-east-1, eu-west-1", project: "Northstar Cloud", when: "6h ago" },
+  { kind: "doc", who: "Mei", what: "Acme implementation notes (revised)", project: "Customer Acme", when: "8h ago" },
+  { kind: "ship", who: "Marcus", what: "Quarterly investor update sent", project: "GTM", when: "1d ago" }
+];
+
+const CHANGE_KIND_META: Record<RecentChange["kind"], { label: string; fg: string; bg: string }> = {
+  ship: { label: "Ship", fg: "#5A6B47", bg: "rgba(122,140,95,0.14)" },
+  decision: { label: "Decision", fg: "#B8543D", bg: "rgba(184,84,61,0.10)" },
+  doc: { label: "Doc", fg: "#3B82C4", bg: "rgba(59,130,196,0.10)" },
+  blocker: { label: "Blocker", fg: "#9E3B2E", bg: "rgba(158,59,46,0.10)" },
+  person: { label: "People", fg: "#7062B8", bg: "rgba(139,127,212,0.14)" }
+};
+
+function getMonday(d: Date): Date {
+  const out = new Date(d);
+  const day = (out.getDay() + 6) % 7; // Mon = 0
+  out.setDate(out.getDate() - day);
+  out.setHours(0, 0, 0, 0);
+  return out;
+}
+
+function MySubscriptions({ onPick }: { onPick: (p: Project) => void }) {
+  const subs = projects.slice(0, 6);
+  return (
+    <section className="mt-12">
+      <div className="flex items-baseline justify-between">
+        <SectionLabel count={`${subs.length} watching`}>My subscriptions</SectionLabel>
+        <span className="font-mono text-[10.5px] tracking-[0.06em] text-[#78716C]">click to open</span>
+      </div>
+      <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {subs.map((p) => (
+          <SubscriptionCard key={p.id} project={p} onClick={() => onPick(p)} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SubscriptionCard({ project, onClick }: { project: Project; onClick: () => void }) {
+  const lead = findPerson(project.teamLead);
+  const health = HEALTH_COLORS[project.health];
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-col gap-3 rounded-[4px] border bg-white px-4 py-3 text-left transition-colors hover:border-[rgba(26,22,18,0.16)]"
+      style={{ borderColor: BORDER }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="font-mono text-[9px] uppercase tracking-[0.14em]" style={{ color: MUTED_2 }}>
+            {project.team}
+          </div>
+          <div className="mt-0.5 truncate font-serif text-[16px] leading-tight" style={{ color: INK }}>
+            {project.name}
+          </div>
+        </div>
+        <span
+          className="flex-shrink-0 rounded-[3px] px-1.5 py-[2px] font-mono text-[10px] uppercase tracking-[0.06em]"
+          style={{ color: health.fg, background: health.bg }}
+        >
+          {health.label}
+        </span>
+      </div>
+      <div className="font-mono text-[10.5px]" style={{ color: MUTED }}>
+        {project.nextMilestone} · {project.daysToDeadline}d
+      </div>
+      <div className="flex items-center justify-between border-t pt-2.5" style={{ borderColor: BORDER }}>
+        {lead ? (
+          <div className="flex items-center gap-2">
+            <InitialsAvatar name={lead.name} initials={lead.initials} size={22} />
+            <span className="text-[11.5px]" style={{ color: INK }}>
+              {lead.name}
+            </span>
+          </div>
+        ) : (
+          <span />
+        )}
+        <span className="font-mono text-[10px]" style={{ color: MUTED }}>
+          last · {project.lastShipped.when}
+        </span>
+      </div>
+    </button>
+  );
+}
+
+function WeekCalendar() {
+  const monday = getMonday(new Date());
+  const days = Array.from({ length: 5 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return d;
+  });
+  return (
+    <section className="mt-12">
+      <div className="flex items-baseline justify-between">
+        <SectionLabel count="this week">Calendar</SectionLabel>
+        <span className="font-mono text-[10.5px] tracking-[0.06em] text-[#78716C]">
+          {WEEK_EVENTS.length} events · {WEEK_EVENTS.filter((e) => e.unassigned).length} unassigned
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        {days.map((d, i) => {
+          const isToday =
+            d.toDateString() === new Date().toDateString();
+          const dayEvents = WEEK_EVENTS.filter((e) => e.day === i);
+          return (
+            <div
+              key={i}
+              className="overflow-hidden rounded-[4px] border bg-white"
+              style={{ borderColor: BORDER }}
+            >
+              <div
+                className="flex items-baseline justify-between border-b px-3 py-2"
+                style={{ borderColor: BORDER, background: isToday ? "rgba(184,84,61,0.04)" : "transparent" }}
+              >
+                <div>
+                  <div className="font-mono text-[9px] uppercase tracking-[0.14em]" style={{ color: MUTED }}>
+                    {d.toLocaleDateString("en-US", { weekday: "short" })}
+                  </div>
+                  <div className="font-serif text-[18px] leading-tight" style={{ color: INK }}>
+                    {d.getDate()}
+                  </div>
+                </div>
+                {isToday ? (
+                  <span
+                    className="rounded-[3px] px-1.5 py-[2px] font-mono text-[9px] uppercase tracking-[0.1em]"
+                    style={{ color: RUST, background: RUST_TINT }}
+                  >
+                    Today
+                  </span>
+                ) : null}
+              </div>
+              <div className="min-h-[120px] space-y-1.5 p-2">
+                {dayEvents.length === 0 ? (
+                  <div className="px-2 py-3 font-mono text-[10px]" style={{ color: MUTED_2 }}>
+                    nothing scheduled
+                  </div>
+                ) : (
+                  dayEvents.map((e, j) => (
+                    <div
+                      key={j}
+                      className="rounded-[3px] px-2 py-1.5"
+                      style={{
+                        background: e.unassigned ? "rgba(194,136,64,0.10)" : "rgba(184,84,61,0.06)",
+                        borderLeft: `2px solid ${e.unassigned ? "#C28840" : RUST}`
+                      }}
+                    >
+                      <div className="font-mono text-[9px] uppercase tracking-[0.1em]" style={{ color: MUTED }}>
+                        {e.time}
+                      </div>
+                      <div className="text-[11.5px] font-medium leading-tight" style={{ color: INK }}>
+                        {e.title}
+                      </div>
+                      <div className="mt-0.5 font-mono text-[9px]" style={{ color: MUTED }}>
+                        {e.team} · {e.attendees}p
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function RecentChanges() {
+  return (
+    <section className="mt-12">
+      <div className="flex items-baseline justify-between">
+        <SectionLabel count={`${RECENT_CHANGES.length} updates`}>Recent changes</SectionLabel>
+        <span className="font-mono text-[10.5px] tracking-[0.06em] text-[#78716C]">cross-team activity stream</span>
+      </div>
+      <div className="mt-3 overflow-hidden rounded-[4px] border bg-white" style={{ borderColor: BORDER }}>
+        {RECENT_CHANGES.map((c, i) => {
+          const meta = CHANGE_KIND_META[c.kind];
+          return (
+            <div
+              key={i}
+              className="flex items-center gap-3 px-4 py-2.5"
+              style={{ borderTop: i === 0 ? "none" : `1px solid ${BORDER}` }}
+            >
+              <span
+                className="flex-shrink-0 rounded-[3px] px-1.5 py-[2px] font-mono text-[9.5px] uppercase tracking-[0.12em]"
+                style={{ color: meta.fg, background: meta.bg }}
+              >
+                {meta.label}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[12.5px]" style={{ color: INK }}>
+                  {c.what}
+                </div>
+                <div className="truncate font-mono text-[10px]" style={{ color: MUTED }}>
+                  {c.who} · {c.project}
+                </div>
+              </div>
+              <span className="flex-shrink-0 font-mono text-[10px]" style={{ color: MUTED_2 }}>
+                {c.when}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export default function InfoPage() {
   const [askMode, setAskMode] = useState(false);
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
@@ -348,6 +604,15 @@ export default function InfoPage() {
               <StatTile id="capacity" label="Team capacity" value={orgStats.teamCapacity.value} change={orgStats.teamCapacity.change} trend={orgStats.teamCapacity.trend} sparkline={orgStats.teamCapacity.sparkline} hoveredTile={hoveredTile} onHover={setHoveredTile} last />
             </div>
           </section>
+
+          {/* My subscriptions (moved from Dashboard) */}
+          <MySubscriptions onPick={(p) => setSelectedProject(p)} />
+
+          {/* Week calendar (moved from Dashboard) */}
+          <WeekCalendar />
+
+          {/* Recent changes (moved from Dashboard, scoped wider than ship log) */}
+          <RecentChanges />
 
           {/* People + Projects */}
           <section className="mt-12 grid gap-8" style={{ gridTemplateColumns: "minmax(0, 3fr) minmax(0, 2fr)" }}>

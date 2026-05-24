@@ -8,7 +8,6 @@ import {
   CodeIcon,
   FileDescriptionIcon,
   GitBranchIcon,
-  Grid2x2Icon,
   LayoutDashboardIcon,
   SettingsIcon,
   SparklesIcon
@@ -126,13 +125,6 @@ export function NavBar({ expanded, onExpandedChange }: NavBarProps) {
       icon: <SocratesIcon />,
       route: `/projects/${currentProjectId}/socrates`,
       active: /^\/projects\/[^/]+\/socrates$/.test(pathname)
-    },
-    {
-      key: "dashboard",
-      label: "DASHBOARD",
-      icon: <Grid2x2Icon />,
-      route: "/dashboard",
-      active: pathname === "/dashboard"
     },
     {
       key: "brain",

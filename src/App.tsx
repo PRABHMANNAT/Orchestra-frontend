@@ -1,9 +1,7 @@
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/shell/AppShell";
-import { SocratesPanel } from "./components/shell/SocratesPanel";
 import { LoginPage } from "./pages/LoginPage";
 import { LiveDocPage } from "./pages/LiveDocPage";
-import { DashboardPage } from "./pages/DashboardPage";
 import { LiveDocViewerPage } from "./pages/LiveDocViewerPage";
 import { ProjectBrainPage } from "./pages/ProjectBrainPage";
 import { SocratesPage } from "./pages/SocratesPage";
@@ -38,24 +36,13 @@ function ProtectedRoute() {
   return <Outlet />;
 }
 
-function DashboardWithSocratesRoute() {
-  return (
-    <div className="flex h-screen overflow-hidden bg-bg">
-      <SocratesPanel />
-      <main className="min-w-0 flex-1 overflow-hidden bg-bg">
-        <DashboardPage />
-      </main>
-    </div>
-  );
-}
-
 export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/projects/1/info" replace />} />
       <Route path="/login" element={<LoginPage />} />
       <Route element={<ProtectedRoute />}>
-        <Route path="/dashboard" element={<DashboardWithSocratesRoute />} />
+        <Route path="/dashboard" element={<Navigate to="/projects/1/info" replace />} />
         <Route path="/overview" element={<Navigate to="/projects/1/overview" replace />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/company-brain" element={<CompanyBrainPulsePage />} />
