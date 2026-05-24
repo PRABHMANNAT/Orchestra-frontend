@@ -1435,6 +1435,9 @@ export default function InfoPage() {
         <div className="mx-auto max-w-[1320px] px-10 pb-24 pt-10">
           <Hero onAsk={() => setAskMode(true)} />
 
+          {/* Calendar — moved to top */}
+          <WeekCalendar />
+
           {/* Needs your attention */}
           <section className="mt-14">
             <SectionLabel>Needs you today</SectionLabel>
@@ -1465,9 +1468,6 @@ export default function InfoPage() {
 
           {/* My subscriptions (project subscriptions — from Dashboard) */}
           <MySubscriptions onPick={(p) => setSelectedProject(p)} />
-
-          {/* Week calendar */}
-          <WeekCalendar />
 
           {/* Upcoming meetings (slim list) */}
           <UpcomingMeetings />
