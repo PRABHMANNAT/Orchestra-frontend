@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { chatJSON, hasOpenAIKey } from "../../../lib/openaiClient";
 
 type Props = {
   open: boolean;
@@ -9,14 +10,29 @@ type Props = {
 const STAGES = ["ingesting", "parsing", "embedding", "linking", "ready"] as const;
 type Stage = (typeof STAGES)[number];
 
+type AutoMeta = {
+  title: string;
+  summary: string;
+  tags: string;
+  project: string;
+  owner: string;
+};
+
+const EXTRACT_SYSTEM = `You are extracting metadata for a memory being added to Northstar Cloud's company brain. Read the user-provided text and return JSON with: title (short, factual), summary (1-2 sentences), tags (comma-separated, 3-5 tags), project (best-guess project name from "Northstar Cloud" / "Payments v2" / "Onboarding Redesign" / "Customer Acme" / "Apollo Expansion" or empty), owner (best-guess owner name from the text, or empty).`;
+
+const DEFAULT_META: AutoMeta = {
+  title: "Pricing call recap — Acme",
+  summary: "Acme's pricing committee is leaning toward yearly. Procurement asked for a SOC2 letter by Friday.",
+  tags: "pricing, acme, enterprise",
+  project: "Customer Acme",
+  owner: "Marcus Thompson"
+};
+
 export function CaptureModal({ open, onClose }: Props) {
   const [stage, setStage] = useState<Stage | null>(null);
-  const [meta, setMeta] = useState({
-    title: "Pricing call recap — Acme",
-    summary: "Acme's pricing committee is leaning toward yearly. Procurement asked for a SOC2 letter by Friday.",
-    tags: "pricing, acme, enterprise",
-    project: "Customer Acme",
-    owner: "Marcus Thompson",
+  const [rawText, setRawText] = useState("");
+  const [meta, setMeta] = useState<AutoMeta & { access: string; agent: boolean; expires: string; sourceOfTruth: boolean }>({
+    ...DEFAULT_META,
     access: "Team",
     agent: true,
     expires: "2027-05-24",
@@ -36,6 +52,35 @@ export function CaptureModal({ open, onClose }: Props) {
     const t = setTimeout(() => setStage(STAGES[idx + 1]), 700);
     return () => clearTimeout(t);
   }, [stage]);
+
+  // When we reach the "parsing" stage and we have pasted text, ask the model
+  // to extract metadata.
+  useEffect(() => {
+    if (stage !== "parsing" || !rawText.trim() || !hasOpenAIKey()) return;
+    let cancelled = false;
+    (async () => {
+      const result = await chatJSON<AutoMeta>(EXTRACT_SYSTEM, rawText.slice(0, 4000), {
+        temperature: 0.2
+      });
+      if (cancelled || !result) return;
+      setMeta((prev) => ({
+        ...prev,
+        title: result.title || prev.title,
+        summary: result.summary || prev.summary,
+        tags: result.tags || prev.tags,
+        project: result.project || prev.project,
+        owner: result.owner || prev.owner
+      }));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [stage, rawText]);
+
+  function beginIngest(seed?: string) {
+    if (seed) setRawText(seed);
+    setStage("ingesting");
+  }
 
   return (
     <AnimatePresence>
@@ -70,35 +115,47 @@ export function CaptureModal({ open, onClose }: Props) {
 
             <div className="grid grid-cols-2 gap-3 p-5">
               <button
-                onClick={() => setStage("ingesting")}
+                onClick={() => beginIngest()}
                 className="flex flex-col items-center justify-center gap-2 rounded-[4px] border border-dashed border-[rgba(26,22,18,0.2)] bg-white p-5 text-[13px] text-[#5A5450] hover:border-[#B8543D] hover:text-[#1A1612]"
               >
                 <span className="font-mono text-[20px]">↑</span>
                 Drag and drop files
               </button>
-              <button
-                onClick={() => setStage("ingesting")}
-                className="rounded-[4px] border border-[rgba(26,22,18,0.08)] bg-white p-5 text-left"
-              >
+              <div className="rounded-[4px] border border-[rgba(26,22,18,0.08)] bg-white p-5">
                 <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#8A7E6F]">Paste URL</div>
                 <input
                   placeholder="https://..."
                   className="mt-1 w-full bg-transparent text-[13px] focus:outline-none"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const v = (e.target as HTMLInputElement).value.trim();
+                      if (v) beginIngest(v);
+                    }
+                  }}
                 />
-              </button>
-              <button
-                onClick={() => setStage("ingesting")}
-                className="col-span-2 rounded-[4px] border border-[rgba(26,22,18,0.08)] bg-white p-5 text-left"
-              >
-                <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#8A7E6F]">Paste text</div>
+              </div>
+              <div className="col-span-2 rounded-[4px] border border-[rgba(26,22,18,0.08)] bg-white p-5">
+                <div className="flex items-center justify-between">
+                  <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#8A7E6F]">Paste text</div>
+                  {rawText.length > 0 ? (
+                    <button
+                      onClick={() => beginIngest()}
+                      className="rounded-[3px] bg-[#1A1612] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-white hover:bg-[#3B3733]"
+                    >
+                      Extract →
+                    </button>
+                  ) : null}
+                </div>
                 <textarea
                   rows={3}
-                  placeholder="Notes, transcript, decision summary..."
+                  value={rawText}
+                  onChange={(e) => setRawText(e.target.value)}
+                  placeholder={hasOpenAIKey() ? "Notes, transcript, decision summary… (AI will auto-extract metadata)" : "Notes, transcript, decision summary..."}
                   className="mt-1 w-full resize-none bg-transparent text-[13px] focus:outline-none"
                 />
-              </button>
+              </div>
               <button
-                onClick={() => setStage("ingesting")}
+                onClick={() => beginIngest()}
                 className="col-span-2 flex items-center justify-center gap-2 rounded-[4px] border border-[rgba(26,22,18,0.08)] bg-white py-3 text-[13px] text-[#5A5450] hover:bg-white"
               >
                 <span className="text-[#B8543D]">●</span> Record voice note

@@ -9,6 +9,19 @@ import {
   type ArtifactSpec,
   type Message
 } from "./data";
+import { hasOpenAIKey, streamChat } from "../../lib/openaiClient";
+
+const SOCRATES_SYSTEM_PROMPT = `You are Socrates, Orchestra's thinking partner for a Series-A software startup called Northstar Cloud.
+
+Voice: calm, intelligent, intentional. Linear meets a literary journal meets Stripe. Short sentences. No emoji. No hype.
+
+You have access to the company's brain — engineering RFCs, decisions, customer notes, design system, sales playbook. Speak as if you've already read them.
+
+When the user asks something where a visual would help (calendar, architecture diagram, comparison, metrics chart, org chart, decision timeline, document, code, dependency graph), keep your prose tight — the visual appears beside your message. Don't describe the visual in detail; let it speak.
+
+Cite specifics from the brain by name when relevant (e.g. "dec-jwt", "Auth migration RFC", "Acme QBR"). Inline citations only — don't list them at the end.
+
+3-5 sentences typical. Up to one short paragraph for complex questions. Never bullet-list unless explicitly asked.`;
 
 function nowIso() {
   return new Date().toISOString();
@@ -50,19 +63,89 @@ export function SocratesChat() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, thinking]);
 
-  function send(text: string) {
+  async function send(text: string) {
     const trimmed = text.trim();
     if (!trimmed) return;
-    const userMsg: Message = { id: crypto.randomUUID?.() ?? `u-${Date.now()}`, role: "user", text: trimmed, timestamp: nowIso() };
+    const userMsg: Message = {
+      id: crypto.randomUUID?.() ?? `u-${Date.now()}`,
+      role: "user",
+      text: trimmed,
+      timestamp: nowIso()
+    };
+    const tmpl = findTemplate(trimmed);
+
+    // Open artifact panel immediately for matched templates so the user sees
+    // the visual while the prose streams in.
+    if (tmpl?.artifact) {
+      setActiveArtifact(tmpl.artifact);
+      setPanelOpen(true);
+    }
+
     setMessages((m) => [...m, userMsg]);
     setInput("");
     setThinking(true);
 
+    const assistantId = `a-${Date.now()}`;
+
+    if (hasOpenAIKey()) {
+      // Real OpenAI streaming. Insert an empty assistant message and append
+      // tokens as they arrive.
+      const placeholder: Message = {
+        id: assistantId,
+        role: "assistant",
+        text: "",
+        artifact: tmpl?.artifact,
+        citations: tmpl?.citations,
+        timestamp: nowIso()
+      };
+      setMessages((m) => [...m, placeholder]);
+      // Build short rolling context (last 6 turns)
+      const ctxMessages = [...messages, userMsg].slice(-12).map((m) => ({
+        role: m.role,
+        content: m.text
+      }));
+      const userContext = tmpl
+        ? `${trimmed}\n\n(A "${tmpl.artifact.kind}" visual titled "${tmpl.artifact.title}" is already showing next to your reply. Speak concisely; don't repeat what the visual already shows.)`
+        : trimmed;
+      ctxMessages[ctxMessages.length - 1] = { role: "user", content: userContext };
+
+      let firstToken = true;
+      const full = await streamChat(
+        [
+          { role: "system", content: SOCRATES_SYSTEM_PROMPT },
+          ...ctxMessages
+        ],
+        (chunk) => {
+          if (firstToken) {
+            setThinking(false);
+            firstToken = false;
+          }
+          setMessages((m) =>
+            m.map((msg) => (msg.id === assistantId ? { ...msg, text: msg.text + chunk } : msg))
+          );
+        },
+        { temperature: 0.45, max_tokens: 350 }
+      );
+
+      setThinking(false);
+      if (!full) {
+        // Stream failed — fall back to canned reply
+        setMessages((m) =>
+          m.map((msg) =>
+            msg.id === assistantId
+              ? { ...msg, text: tmpl?.reply ?? FALLBACK_REPLY }
+              : msg
+          )
+        );
+      }
+      return;
+    }
+
+    // No key configured → use canned reply with a small delay for feel
     setTimeout(() => {
-      const tmpl = findTemplate(trimmed);
       const reply: Message = tmpl
         ? {
-            id: `a-${Date.now()}`,
+            id: assistantId,
             role: "assistant",
             text: tmpl.reply,
             artifact: tmpl.artifact,
@@ -70,7 +153,7 @@ export function SocratesChat() {
             timestamp: nowIso()
           }
         : {
-            id: `a-${Date.now()}`,
+            id: assistantId,
             role: "assistant",
             text: FALLBACK_REPLY,
             timestamp: nowIso()
@@ -81,7 +164,7 @@ export function SocratesChat() {
         setActiveArtifact(reply.artifact);
         setPanelOpen(true);
       }
-    }, 1200);
+    }, 1000);
   }
 
   function openArtifact(a: ArtifactSpec) {
@@ -204,10 +287,11 @@ function Header({
           <div className="font-serif text-[16px] leading-none text-[#1A1612]">Socrates</div>
         </div>
       </div>
-      <div className="hidden flex-1 items-center justify-center md:flex">
+      <div className="hidden flex-1 items-center justify-center gap-3 md:flex">
         <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#A89C8A]">
           {activeArtifact ? `viewing · ${activeArtifact.title}` : "thinking partner · grounded in the brain"}
         </span>
+        <ModeBadge />
       </div>
       <div className="flex items-center gap-2">
         <button
@@ -484,6 +568,27 @@ function IconButton({ children, label, onClick }: { children: React.ReactNode; l
     >
       {children}
     </button>
+  );
+}
+
+function ModeBadge() {
+  const live = hasOpenAIKey();
+  return (
+    <span
+      className="flex items-center gap-1.5 rounded-[3px] border px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em]"
+      style={{
+        background: live ? "rgba(122,140,95,0.10)" : "rgba(120,113,108,0.10)",
+        borderColor: live ? "rgba(122,140,95,0.4)" : "rgba(26,22,18,0.12)",
+        color: live ? "#5A6B47" : "#5A5450"
+      }}
+      title={live ? "Live model: VITE_OPENAI_API_KEY detected" : "Demo mode: set VITE_OPENAI_API_KEY in .env.local for real replies"}
+    >
+      <span
+        className="inline-block h-1.5 w-1.5 rounded-full"
+        style={{ background: live ? "#7A8C5F" : "#A89C8A" }}
+      />
+      {live ? "Live model" : "Demo mode"}
+    </span>
   );
 }
 

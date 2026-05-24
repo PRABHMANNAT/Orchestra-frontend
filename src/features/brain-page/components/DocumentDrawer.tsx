@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { Doc } from "../data/mockBrainData";
+import { hasOpenAIKey, streamChat } from "../../../lib/openaiClient";
 
 type Props = {
   doc: Doc | null;
@@ -10,8 +11,39 @@ type Props = {
 const TABS = ["Content", "Lineage", "Used By", "Access", "Comments"] as const;
 type Tab = (typeof TABS)[number];
 
+const SUMMARY_SYSTEM = `You are summarizing a memory in Northstar Cloud's company brain. Output a 2-3 sentence summary that captures: what it is, the key rationale or decision, and why someone fetching it would care. Calm tone. No emoji. No headers.`;
+
 export function DocumentDrawer({ doc, onClose }: Props) {
   const [tab, setTab] = useState<Tab>("Content");
+  const [summary, setSummary] = useState<string | null>(null);
+  const [regenerating, setRegenerating] = useState(false);
+
+  // Reset summary when a different doc opens
+  useEffect(() => {
+    setSummary(null);
+    setRegenerating(false);
+  }, [doc?.id]);
+
+  async function regenerate() {
+    if (!doc) return;
+    if (!hasOpenAIKey()) {
+      // Demo mode: just rewrite the seed summary
+      setSummary(doc.summary + " · regenerated (demo)");
+      return;
+    }
+    setRegenerating(true);
+    setSummary("");
+    const ctx = `Title: ${doc.title}\nType: ${doc.type}\nSource: ${doc.source}\nDomain: ${doc.domain}\nFreshness: ${doc.freshness}\nSeed summary: ${doc.summary}`;
+    await streamChat(
+      [
+        { role: "system", content: SUMMARY_SYSTEM },
+        { role: "user", content: ctx }
+      ],
+      (chunk) => setSummary((s) => (s ?? "") + chunk),
+      { temperature: 0.4, max_tokens: 180 }
+    );
+    setRegenerating(false);
+  }
 
   return (
     <AnimatePresence>
@@ -59,9 +91,15 @@ export function DocumentDrawer({ doc, onClose }: Props) {
 
             <div className="border-b border-[rgba(26,22,18,0.08)] p-5">
               <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#8A7E6F]">AI auto-summary</div>
-              <p className="mt-1.5 text-[13.5px] leading-[1.6] text-[#1A1612]">{doc.summary}</p>
-              <button className="mt-2 font-mono text-[10px] uppercase tracking-[0.12em] text-[#B8543D] hover:text-[#8C3E28]">
-                ↻ Regenerate
+              <p className="mt-1.5 whitespace-pre-wrap text-[13.5px] leading-[1.6] text-[#1A1612]">
+                {summary ?? doc.summary}
+              </p>
+              <button
+                onClick={regenerate}
+                disabled={regenerating}
+                className="mt-2 font-mono text-[10px] uppercase tracking-[0.12em] text-[#B8543D] hover:text-[#8C3E28] disabled:opacity-50"
+              >
+                {regenerating ? "↻ streaming…" : "↻ Regenerate"}
               </button>
             </div>
 

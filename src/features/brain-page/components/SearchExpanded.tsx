@@ -1,11 +1,41 @@
+import { useEffect, useState } from "react";
 import { DOCS, TOP_FETCHED, AGENT_FEED } from "../data/mockBrainData";
+import { hasOpenAIKey, streamChat } from "../../../lib/openaiClient";
 
 type Props = {
   query: string;
   onClose: () => void;
 };
 
+const SEARCH_SYSTEM = `You are the answer surface for Northstar Cloud's company brain. The user just searched the brain.
+
+Write a tight, citation-rich answer in 2-4 sentences. Speak as if you've read every doc. Reference internal artifacts by code-style names when relevant (dec-jwt, doc-sso, Auth migration RFC, Acme QBR). Inline citations only. No bullets. No headers. No emoji.`;
+
 export function SearchExpanded({ query, onClose }: Props) {
+  const [answer, setAnswer] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!query) return;
+    const live = hasOpenAIKey();
+    if (!live) {
+      setAnswer("");
+      return;
+    }
+    setAnswer("");
+    setLoading(true);
+    const abort = new AbortController();
+    streamChat(
+      [
+        { role: "system", content: SEARCH_SYSTEM },
+        { role: "user", content: query }
+      ],
+      (chunk) => setAnswer((a) => a + chunk),
+      { temperature: 0.35, max_tokens: 220, signal: abort.signal }
+    ).then(() => setLoading(false));
+    return () => abort.abort();
+  }, [query]);
+
   if (!query) return null;
 
   const matches = DOCS.filter((d) =>
@@ -20,16 +50,27 @@ export function SearchExpanded({ query, onClose }: Props) {
       >
         {/* Direct answer */}
         <div className="border-b border-[rgba(26,22,18,0.08)] bg-[#FAF8F5] p-5">
-          <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A7E6F]">Direct answer</div>
-          <p className="mt-2 font-serif text-[16px] leading-[1.6] text-[#1A1612]">
-            {`Northstar uses JWT-based auth with 30d refresh tokens. The decision was made in `}
-            <CitationChip label="dec-jwt" />
-            {` over session cookies for stateless scaling. The Aurora migration `}
-            <CitationChip label="dec-aurora" />
-            {` enables horizontal read replicas. Acme's SSO requirements `}
-            <CitationChip label="doc-sso" />
-            {` are tracked separately from the general auth flow.`}
-          </p>
+          <div className="flex items-center justify-between">
+            <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A7E6F]">Direct answer</div>
+            {loading ? (
+              <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#A89C8A]">streaming…</div>
+            ) : null}
+          </div>
+          {hasOpenAIKey() && answer ? (
+            <p className="mt-2 font-serif text-[16px] leading-[1.6] text-[#1A1612] whitespace-pre-wrap">{answer}</p>
+          ) : hasOpenAIKey() ? (
+            <p className="mt-2 font-serif text-[16px] leading-[1.6] text-[#8A7E6F]">Thinking…</p>
+          ) : (
+            <p className="mt-2 font-serif text-[16px] leading-[1.6] text-[#1A1612]">
+              {`Northstar uses JWT-based auth with 30d refresh tokens. The decision was made in `}
+              <CitationChip label="dec-jwt" />
+              {` over session cookies for stateless scaling. The Aurora migration `}
+              <CitationChip label="dec-aurora" />
+              {` enables horizontal read replicas. Acme's SSO requirements `}
+              <CitationChip label="doc-sso" />
+              {` are tracked separately from the general auth flow.`}
+            </p>
+          )}
         </div>
 
         {/* Matching documents */}
