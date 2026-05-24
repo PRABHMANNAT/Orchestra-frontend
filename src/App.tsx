@@ -1,4 +1,4 @@
-import { Navigate, Outlet, Route, Routes, useParams } from "react-router-dom";
+import { Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/shell/AppShell";
 import { SocratesPanel } from "./components/shell/SocratesPanel";
 import { LoginPage } from "./pages/LoginPage";
@@ -6,7 +6,6 @@ import { LiveDocPage } from "./pages/LiveDocPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LiveDocViewerPage } from "./pages/LiveDocViewerPage";
 import { ProjectBrainPage } from "./pages/ProjectBrainPage";
-import { ProjectMemoryPage } from "./pages/ProjectDocsPage";
 import { ProjectDashboardPage } from "./pages/ProjectDashboardPage";
 import { ProjectFlowchartPage } from "./pages/ProjectFlowchartPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -49,12 +48,6 @@ function DashboardWithSocratesRoute() {
   );
 }
 
-function ProjectMemoryRedirect() {
-  const { id = "1" } = useParams();
-
-  return <Navigate to={`/projects/${id}/memory`} replace />;
-}
-
 export default function App() {
   return (
     <Routes>
@@ -79,8 +72,6 @@ export default function App() {
           <Route path="brain" element={<ProjectBrainPage />} />
           <Route path="flow" element={<ProjectFlowchartPage />} />
           <Route path="live-doc" element={<LiveDocPage />} />
-          <Route path="memory" element={<ProjectMemoryPage />} />
-          <Route path="docs" element={<ProjectMemoryRedirect />} />
           <Route path="docs/:docId/view" element={<LiveDocViewerPage />} />
           <Route path="info" element={<InfoPage />} />
         </Route>

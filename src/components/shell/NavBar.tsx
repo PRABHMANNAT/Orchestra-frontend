@@ -5,7 +5,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 import Avatar from "../ui/Avatar";
 import {
   AlertCircleIcon,
-  BooksIcon,
   CodeIcon,
   FileDescriptionIcon,
   GitBranchIcon,
@@ -124,13 +123,6 @@ export function NavBar({ expanded, onExpandedChange }: NavBarProps) {
       active: /^\/projects\/[^/]+\/flow$/.test(pathname)
     },
     {
-      key: "memory",
-      label: "MEMORY",
-      icon: <BooksIcon />,
-      route: `/projects/${currentProjectId}/memory`,
-      active: /^\/projects\/[^/]+\/(?:memory|docs(?:\/.*)?)$/.test(pathname)
-    },
-    {
       key: "live-doc",
       label: "LIVE DOC",
       icon: <FileDescriptionIcon />,
@@ -181,13 +173,6 @@ export function NavBar({ expanded, onExpandedChange }: NavBarProps) {
       icon: <GitBranchIcon />,
       route: `/projects/${currentProjectId}/flow`,
       active: new RegExp(`^/projects/${currentProjectId}/flow$`).test(pathname)
-    },
-    {
-      key: "memory",
-      label: "MEMORY",
-      icon: <BooksIcon />,
-      route: `/projects/${currentProjectId}/memory`,
-      active: new RegExp(`^/projects/${currentProjectId}/(?:memory|docs(?:/.*)?)$`).test(pathname)
     },
     {
       key: "live-doc",
