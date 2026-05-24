@@ -1,20 +1,25 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
+  TbActivity,
   TbArrowDown,
   TbArrowRight,
   TbArrowUp,
+  TbCalendarEvent,
   TbChevronDown,
   TbChevronRight,
   TbCircleFilled,
   TbCommand,
   TbDownload,
   TbMessage2,
+  TbReportMoney,
   TbSearch,
   TbSend,
   TbSparkles,
+  TbTimelineEvent,
   TbTool,
   TbUser,
+  TbUsers,
   TbX
 } from "react-icons/tb";
 import {
@@ -1324,8 +1329,75 @@ function RecentChanges() {
   );
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// Tabbed dashboard nav — slides a rust underline between tabs
+// ────────────────────────────────────────────────────────────────────────────
+
+const INFO_TABS = [
+  { id: "today", label: "Today", icon: TbCalendarEvent },
+  { id: "pulse", label: "Pulse", icon: TbActivity },
+  { id: "team", label: "Team", icon: TbUsers },
+  { id: "activity", label: "Activity", icon: TbTimelineEvent },
+  { id: "money", label: "Money", icon: TbReportMoney }
+] as const;
+
+type InfoTab = (typeof INFO_TABS)[number]["id"];
+
+function TabNav({ active, onSelect }: { active: InfoTab; onSelect: (t: InfoTab) => void }) {
+  return (
+    <div
+      className="mt-10 flex items-end gap-1 border-b"
+      style={{ borderColor: BORDER }}
+    >
+      {INFO_TABS.map((tab) => {
+        const isActive = active === tab.id;
+        const Icon = tab.icon;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => onSelect(tab.id)}
+            className="relative flex items-center gap-2 px-4 py-3 transition-colors"
+            style={{ color: isActive ? INK : MUTED }}
+          >
+            <Icon size={15} />
+            <span className="font-mono text-[11px] uppercase tracking-[0.18em]">{tab.label}</span>
+            {isActive ? (
+              <motion.span
+                layoutId="info-tab-underline"
+                className="absolute -bottom-px left-0 right-0 h-[2px]"
+                style={{ background: RUST }}
+                transition={{ type: "spring", stiffness: 380, damping: 28 }}
+              />
+            ) : null}
+          </button>
+        );
+      })}
+      <span className="ml-auto px-4 py-3 font-mono text-[10px] uppercase tracking-[0.14em]" style={{ color: MUTED_2 }}>
+        operator view
+      </span>
+    </div>
+  );
+}
+
+const PANE_VARIANTS = {
+  hidden: { opacity: 0, y: 16 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] as const, staggerChildren: 0.07 }
+  },
+  exit: { opacity: 0, y: -8, transition: { duration: 0.18 } }
+};
+
+const SECTION_VARIANTS = {
+  hidden: { opacity: 0, y: 12 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] as const } }
+};
+
 export default function InfoPage() {
   const [askMode, setAskMode] = useState(false);
+  const [activeTab, setActiveTab] = useState<InfoTab>("today");
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [teamTab, setTeamTab] = useState<(typeof TEAM_TABS)[number]>("All");
@@ -1435,277 +1507,300 @@ export default function InfoPage() {
         <div className="mx-auto max-w-[1320px] px-10 pb-24 pt-10">
           <Hero onAsk={() => setAskMode(true)} />
 
-          {/* Calendar — moved to top */}
-          <WeekCalendar />
+          <TabNav active={activeTab} onSelect={setActiveTab} />
 
-          {/* Needs your attention */}
-          <section className="mt-14">
-            <SectionLabel>Needs you today</SectionLabel>
-            <div className="mt-3 overflow-hidden rounded-[4px] border" style={{ borderColor: BORDER, background: SURFACE }}>
-              {attentionItems.length === 0 ? (
-                <div className="px-6 py-12 text-center">
-                  <p className="font-serif text-[22px] italic text-[#1A1612]">Nothing needs you right now. Go build.</p>
-                </div>
-              ) : (
-                attentionItems.map((item, i) => (
-                  <AttentionRow key={item.id} item={item} divider={i !== 0} />
-                ))
-              )}
-            </div>
-          </section>
-
-          {/* Key stats */}
-          <section className="mt-12">
-            <SectionLabel>Pulse</SectionLabel>
-            <div className="mt-3 grid grid-cols-5 gap-0 overflow-hidden rounded-[4px] border" style={{ borderColor: BORDER, background: SURFACE }}>
-              <StatTile id="active" label="Active projects" value={orgStats.activeProjects.value} change={orgStats.activeProjects.change} trend={orgStats.activeProjects.trend} sparkline={orgStats.activeProjects.sparkline} hoveredTile={hoveredTile} onHover={setHoveredTile} />
-              <StatTile id="velocity" label="Shipping velocity" value={orgStats.shippingVelocity.value} change={orgStats.shippingVelocity.change} trend={orgStats.shippingVelocity.trend} sparkline={orgStats.shippingVelocity.sparkline} hoveredTile={hoveredTile} onHover={setHoveredTile} />
-              <StatTile id="cycle" label="Avg cycle time" value={orgStats.avgCycleTime.value} change={orgStats.avgCycleTime.change} trend={orgStats.avgCycleTime.trend} sparkline={orgStats.avgCycleTime.sparkline} hoveredTile={hoveredTile} onHover={setHoveredTile} invertTrend />
-              <StatTile id="blockers" label="Blockers open" value={orgStats.blockersOpen.value} change={orgStats.blockersOpen.change} trend={orgStats.blockersOpen.trend} sparkline={orgStats.blockersOpen.sparkline} hoveredTile={hoveredTile} onHover={setHoveredTile} invertTrend />
-              <StatTile id="capacity" label="Team capacity" value={orgStats.teamCapacity.value} change={orgStats.teamCapacity.change} trend={orgStats.teamCapacity.trend} sparkline={orgStats.teamCapacity.sparkline} hoveredTile={hoveredTile} onHover={setHoveredTile} last />
-            </div>
-          </section>
-
-          {/* My subscriptions (project subscriptions — from Dashboard) */}
-          <MySubscriptions onPick={(p) => setSelectedProject(p)} />
-
-          {/* Upcoming meetings (slim list) */}
-          <UpcomingMeetings />
-
-          {/* Alerts — system + agent */}
-          <AlertsWidget />
-
-          {/* Active SaaS subscriptions with add + live calculate */}
-          <ActiveSubscriptions />
-
-          {/* Recent changes — cross-team activity stream */}
-          <RecentChanges />
-
-          {/* People + Projects */}
-          <section className="mt-12 grid gap-8" style={{ gridTemplateColumns: "minmax(0, 3fr) minmax(0, 2fr)" }}>
-            {/* People column */}
-            <div>
-              <div className="flex items-center justify-between">
-                <SectionLabel count={`${people.length} people`}>Team</SectionLabel>
-                <div className="font-mono text-[10.5px] tracking-[0.12em] text-[#78716C]">{filteredPeople.length} shown</div>
-              </div>
-
-              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-b pb-3" style={{ borderColor: BORDER }}>
-                {TEAM_TABS.map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setTeamTab(tab)}
-                    className="font-sans text-[12.5px] transition-colors"
-                    style={{
-                      color: teamTab === tab ? INK : MUTED,
-                      borderBottom: teamTab === tab ? `1.5px solid ${RUST}` : "1.5px solid transparent",
-                      paddingBottom: 4
-                    }}
-                  >
-                    {tab}
-                  </button>
-                ))}
-              </div>
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                {(
-                  [
-                    ["overloaded", "Overloaded"],
-                    ["available", "Available"],
-                    ["on-leave", "On leave"],
-                    ["new", "New (<30d)"]
-                  ] as [WorkloadFilter, string][]
-                ).map(([key, label]) => {
-                  const active = workloadFilter === key;
-                  return (
-                    <button
-                      key={label}
-                      type="button"
-                      onClick={() => setWorkloadFilter(active ? null : key)}
-                      className="rounded-[4px] border px-2.5 py-1 font-mono text-[10.5px] tracking-[0.06em] transition-colors"
-                      style={{
-                        background: active ? RUST_TINT : "transparent",
-                        color: active ? RUST : MUTED,
-                        borderColor: active ? "rgba(184,84,61,0.4)" : BORDER
-                      }}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
-                {filteredPeople.map((p) => (
-                  <PersonCard
-                    key={p.id}
-                    person={p}
-                    onClick={() => setSelectedPerson(p)}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      setContextMenu({ x: e.clientX, y: e.clientY, person: p });
-                    }}
-                    onAsk={() => {
-                      setAskMode(true);
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Projects column */}
-            <div>
-              <div className="flex items-center justify-between">
-                <SectionLabel count={`${projects.length} active`}>Projects</SectionLabel>
-                <div className="flex items-center gap-3 font-mono text-[10.5px] tracking-[0.06em] text-[#78716C]">
-                  Sort:
-                  {(["health", "deadline", "team"] as ProjectSort[]).map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setProjectSort(s)}
-                      style={{ color: projectSort === s ? INK : MUTED }}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-3 flex flex-col gap-2">
-                {sortedProjects.map((p) => (
-                  <ProjectCard key={p.id} project={p} onClick={() => setSelectedProject(p)} />
-                ))}
-              </div>
-            </div>
-          </section>
-
-          {/* Blockers stream */}
-          <section className="mt-14">
-            <div className="flex items-baseline justify-between">
-              <SectionLabel count={blockers.length}>Open blockers</SectionLabel>
-              <span className="font-mono text-[10.5px] tracking-[0.06em] text-[#78716C]">oldest first</span>
-            </div>
-            <div className="mt-3 flex gap-3 overflow-x-auto pb-2" style={{ scrollSnapType: "x mandatory" }}>
-              {sortedBlockers.map((b) => (
-                <BlockerCard key={b.id} blocker={b} />
-              ))}
-            </div>
-          </section>
-
-          {/* Shipping log */}
-          <section className="mt-12">
-            <div className="flex items-baseline justify-between">
-              <SectionLabel>What shipped this week</SectionLabel>
-              <div className="flex items-center gap-4 font-mono text-[10.5px] tracking-[0.06em] text-[#78716C]">
-                <div className="flex items-center gap-2">
-                  <span>team:</span>
-                  {(["All", "Engineering", "Design", "Product", "GTM", "Ops"] as const).map((t) => (
-                    <button key={t} type="button" onClick={() => setShipFilterTeam(t)} style={{ color: shipFilterTeam === t ? INK : MUTED }}>
-                      {t.toLowerCase()}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span>type:</span>
-                  {(["All", "feature", "fix", "refactor", "docs", "decision"] as const).map((t) => (
-                    <button key={t} type="button" onClick={() => setShipFilterType(t)} style={{ color: shipFilterType === t ? INK : MUTED }}>
-                      {t}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-3 overflow-hidden rounded-[4px] border" style={{ borderColor: BORDER, background: SURFACE }}>
-              {filteredShipLog.map((s, i) => (
-                <ShipRow key={s.id} entry={s} divider={i !== 0} />
-              ))}
-              {filteredShipLog.length === 0 ? (
-                <div className="px-5 py-6 font-sans text-[13px] text-[#78716C]">No shipments match this filter.</div>
-              ) : null}
-            </div>
-          </section>
-
-          {/* Hiring & capacity (collapsed) */}
-          <section className="mt-12">
-            <button
-              type="button"
-              onClick={() => setHiringExpanded((v) => !v)}
-              className="flex w-full items-center justify-between border-b py-2 text-left"
-              style={{ borderColor: BORDER }}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              variants={PANE_VARIANTS}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+              className="mt-6"
             >
-              <div className="flex items-center gap-2">
-                <SectionLabel count={`${openRoles.length} open roles`}>Hiring & capacity</SectionLabel>
-              </div>
-              <span className="flex items-center gap-1 font-mono text-[10.5px] text-[#78716C]">
-                {hiringExpanded ? "collapse" : "expand"}
-                {hiringExpanded ? <TbChevronDown size={13} /> : <TbChevronRight size={13} />}
-              </span>
-            </button>
-            <AnimatePresence initial={false}>
-              {hiringExpanded ? (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-                  className="overflow-hidden"
-                >
-                  <div className="mt-4 grid gap-3" style={{ gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)" }}>
-                    <div className="overflow-hidden rounded-[4px] border" style={{ borderColor: BORDER, background: SURFACE }}>
-                      {openRoles.map((r, i) => (
-                        <RoleRow key={r.id} role={r} divider={i !== 0} />
+              {activeTab === "today" ? (
+                <>
+                  {/* Attention items as a slim banner at top of Today */}
+                  <motion.section variants={SECTION_VARIANTS}>
+                    <SectionLabel count={attentionItems.length}>Needs you today</SectionLabel>
+                    <div className="mt-3 overflow-hidden rounded-[4px] border" style={{ borderColor: BORDER, background: SURFACE }}>
+                      {attentionItems.length === 0 ? (
+                        <div className="px-6 py-12 text-center">
+                          <p className="font-serif text-[22px] italic text-[#1A1612]">Nothing needs you right now. Go build.</p>
+                        </div>
+                      ) : (
+                        attentionItems.map((item, i) => (
+                          <AttentionRow key={item.id} item={item} divider={i !== 0} />
+                        ))
+                      )}
+                    </div>
+                  </motion.section>
+
+                  {/* Calendar as the big visual centerpiece */}
+                  <motion.div variants={SECTION_VARIANTS}>
+                    <WeekCalendar />
+                  </motion.div>
+
+                  {/* Two-column: meetings | alerts */}
+                  <motion.div
+                    variants={SECTION_VARIANTS}
+                    className="mt-12 grid grid-cols-1 gap-6 lg:grid-cols-2"
+                  >
+                    <div className="-mt-12">
+                      <UpcomingMeetings />
+                    </div>
+                    <div className="-mt-12">
+                      <AlertsWidget />
+                    </div>
+                  </motion.div>
+                </>
+              ) : null}
+
+              {activeTab === "pulse" ? (
+                <>
+                  <motion.section variants={SECTION_VARIANTS}>
+                    <SectionLabel>Org pulse</SectionLabel>
+                    <div className="mt-3 grid grid-cols-2 gap-0 overflow-hidden rounded-[4px] border md:grid-cols-5" style={{ borderColor: BORDER, background: SURFACE }}>
+                      <StatTile id="active" label="Active projects" value={orgStats.activeProjects.value} change={orgStats.activeProjects.change} trend={orgStats.activeProjects.trend} sparkline={orgStats.activeProjects.sparkline} hoveredTile={hoveredTile} onHover={setHoveredTile} />
+                      <StatTile id="velocity" label="Shipping velocity" value={orgStats.shippingVelocity.value} change={orgStats.shippingVelocity.change} trend={orgStats.shippingVelocity.trend} sparkline={orgStats.shippingVelocity.sparkline} hoveredTile={hoveredTile} onHover={setHoveredTile} />
+                      <StatTile id="cycle" label="Avg cycle time" value={orgStats.avgCycleTime.value} change={orgStats.avgCycleTime.change} trend={orgStats.avgCycleTime.trend} sparkline={orgStats.avgCycleTime.sparkline} hoveredTile={hoveredTile} onHover={setHoveredTile} invertTrend />
+                      <StatTile id="blockers" label="Blockers open" value={orgStats.blockersOpen.value} change={orgStats.blockersOpen.change} trend={orgStats.blockersOpen.trend} sparkline={orgStats.blockersOpen.sparkline} hoveredTile={hoveredTile} onHover={setHoveredTile} invertTrend />
+                      <StatTile id="capacity" label="Team capacity" value={orgStats.teamCapacity.value} change={orgStats.teamCapacity.change} trend={orgStats.teamCapacity.trend} sparkline={orgStats.teamCapacity.sparkline} hoveredTile={hoveredTile} onHover={setHoveredTile} last />
+                    </div>
+                  </motion.section>
+
+                  <motion.div variants={SECTION_VARIANTS}>
+                    <MySubscriptions onPick={(p) => setSelectedProject(p)} />
+                  </motion.div>
+
+                  {/* Footer pulse band */}
+                  <motion.section variants={SECTION_VARIANTS} className="mt-12 border-t pt-6" style={{ borderColor: BORDER }}>
+                    <SectionLabel>Org vitals · rolling</SectionLabel>
+                    <div className="mt-3 grid grid-cols-3 gap-3 md:grid-cols-7">
+                      {[
+                        { k: "eNPS", v: orgPulse.enps },
+                        { k: "Ret · 30d", v: orgPulse.retention30 },
+                        { k: "Ret · 60d", v: orgPulse.retention60 },
+                        { k: "Ret · 90d", v: orgPulse.retention90 },
+                        { k: "Active", v: orgPulse.activeProjects },
+                        { k: "12w ships", v: orgPulse.shipping12wk },
+                        { k: "Headcount", v: orgPulse.headcount }
+                      ].map((m) => (
+                        <div key={m.k} className="rounded-[4px] border bg-white px-3 py-3" style={{ borderColor: BORDER }}>
+                          <div className="font-mono text-[9px] uppercase tracking-[0.14em]" style={{ color: MUTED }}>{m.k}</div>
+                          <div className="mt-1 font-serif text-[22px] leading-none tracking-tight" style={{ color: INK }}>{m.v}</div>
+                        </div>
                       ))}
                     </div>
-                    <div className="rounded-[4px] border p-4" style={{ borderColor: BORDER, background: SURFACE }}>
-                      <p className="font-mono text-[10px] tracking-[0.18em] text-[#78716C]">AI · CAPACITY GAPS</p>
-                      <p className="mt-3 font-sans text-[13.5px] leading-[1.55] text-[#1A1612]">
-                        Backend team has been at <span className="font-mono">110%</span> capacity for 3 weeks. Suggested hire:
-                        <span className="font-medium"> Senior Backend Engineer</span>.
-                      </p>
-                      <p className="mt-3 font-sans text-[13.5px] leading-[1.55] text-[#1A1612]">
-                        Design has slack: <span className="font-mono">52%</span> avg on mobile. Consider sliding{" "}
-                        <span className="font-medium">Anika</span> to onboarding revamp.
-                      </p>
+                  </motion.section>
+                </>
+              ) : null}
+
+              {activeTab === "team" ? (
+                <>
+                  <motion.section variants={SECTION_VARIANTS} className="grid gap-8" style={{ gridTemplateColumns: "minmax(0, 3fr) minmax(0, 2fr)" }}>
+                    {/* People column */}
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <SectionLabel count={`${people.length} people`}>Team</SectionLabel>
+                        <div className="font-mono text-[10.5px] tracking-[0.12em] text-[#78716C]">{filteredPeople.length} shown</div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-b pb-3" style={{ borderColor: BORDER }}>
+                        {TEAM_TABS.map((tab) => (
+                          <button
+                            key={tab}
+                            type="button"
+                            onClick={() => setTeamTab(tab)}
+                            className="font-sans text-[12.5px] transition-colors"
+                            style={{
+                              color: teamTab === tab ? INK : MUTED,
+                              borderBottom: teamTab === tab ? `1.5px solid ${RUST}` : "1.5px solid transparent",
+                              paddingBottom: 4
+                            }}
+                          >
+                            {tab}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {(
+                          [
+                            ["overloaded", "Overloaded"],
+                            ["available", "Available"],
+                            ["on-leave", "On leave"],
+                            ["new", "New (<30d)"]
+                          ] as [WorkloadFilter, string][]
+                        ).map(([key, label]) => {
+                          const active = workloadFilter === key;
+                          return (
+                            <button
+                              key={label}
+                              type="button"
+                              onClick={() => setWorkloadFilter(active ? null : key)}
+                              className="rounded-[4px] border px-2.5 py-1 font-mono text-[10.5px] tracking-[0.06em] transition-colors"
+                              style={{
+                                background: active ? RUST_TINT : "transparent",
+                                color: active ? RUST : MUTED,
+                                borderColor: active ? "rgba(184,84,61,0.4)" : BORDER
+                              }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
+                        {filteredPeople.map((p) => (
+                          <PersonCard
+                            key={p.id}
+                            person={p}
+                            onClick={() => setSelectedPerson(p)}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              setContextMenu({ x: e.clientX, y: e.clientY, person: p });
+                            }}
+                            onAsk={() => setAskMode(true)}
+                          />
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                    {/* Projects column */}
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <SectionLabel count={`${projects.length} active`}>Projects</SectionLabel>
+                        <div className="flex items-center gap-3 font-mono text-[10.5px] tracking-[0.06em] text-[#78716C]">
+                          Sort:
+                          {(["health", "deadline", "team"] as ProjectSort[]).map((s) => (
+                            <button
+                              key={s}
+                              type="button"
+                              onClick={() => setProjectSort(s)}
+                              style={{ color: projectSort === s ? INK : MUTED }}
+                            >
+                              {s}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-col gap-2">
+                        {sortedProjects.map((p) => (
+                          <ProjectCard key={p.id} project={p} onClick={() => setSelectedProject(p)} />
+                        ))}
+                      </div>
+                    </div>
+                  </motion.section>
+
+                  <motion.section variants={SECTION_VARIANTS} className="mt-12">
+                    <button
+                      type="button"
+                      onClick={() => setHiringExpanded((v) => !v)}
+                      className="flex w-full items-center justify-between border-b py-2 text-left"
+                      style={{ borderColor: BORDER }}
+                    >
+                      <SectionLabel count={`${openRoles.length} open roles`}>Hiring & capacity</SectionLabel>
+                      <span className="flex items-center gap-1 font-mono text-[10.5px] text-[#78716C]">
+                        {hiringExpanded ? "collapse" : "expand"}
+                        {hiringExpanded ? <TbChevronDown size={13} /> : <TbChevronRight size={13} />}
+                      </span>
+                    </button>
+                    <AnimatePresence initial={false}>
+                      {hiringExpanded ? (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+                          className="overflow-hidden"
+                        >
+                          <div className="mt-4 grid gap-3" style={{ gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)" }}>
+                            <div className="overflow-hidden rounded-[4px] border" style={{ borderColor: BORDER, background: SURFACE }}>
+                              {openRoles.map((r, i) => (
+                                <RoleRow key={r.id} role={r} divider={i !== 0} />
+                              ))}
+                            </div>
+                            <div className="rounded-[4px] border p-4" style={{ borderColor: BORDER, background: SURFACE }}>
+                              <p className="font-mono text-[10px] tracking-[0.18em] text-[#78716C]">AI · CAPACITY GAPS</p>
+                              <p className="mt-3 font-sans text-[13.5px] leading-[1.55] text-[#1A1612]">
+                                Backend at <span className="font-mono">110%</span> capacity for 3 weeks. Suggested hire:{" "}
+                                <span className="font-medium">Senior Backend Engineer</span>.
+                              </p>
+                              <p className="mt-3 font-sans text-[13.5px] leading-[1.55] text-[#1A1612]">
+                                Design has slack at <span className="font-mono">52%</span> on mobile — slide{" "}
+                                <span className="font-medium">Anika</span> to the onboarding revamp.
+                              </p>
+                            </div>
+                          </div>
+                        </motion.div>
+                      ) : null}
+                    </AnimatePresence>
+                  </motion.section>
+                </>
+              ) : null}
+
+              {activeTab === "activity" ? (
+                <>
+                  <motion.div variants={SECTION_VARIANTS}>
+                    <RecentChanges />
+                  </motion.div>
+
+                  <motion.section variants={SECTION_VARIANTS} className="mt-12">
+                    <div className="flex items-baseline justify-between">
+                      <SectionLabel count={blockers.length}>Open blockers</SectionLabel>
+                      <span className="font-mono text-[10.5px] tracking-[0.06em] text-[#78716C]">oldest first</span>
+                    </div>
+                    <div className="mt-3 flex gap-3 overflow-x-auto pb-2" style={{ scrollSnapType: "x mandatory" }}>
+                      {sortedBlockers.map((b) => (
+                        <BlockerCard key={b.id} blocker={b} />
+                      ))}
+                    </div>
+                  </motion.section>
+
+                  <motion.section variants={SECTION_VARIANTS} className="mt-12">
+                    <div className="flex items-baseline justify-between">
+                      <SectionLabel>What shipped this week</SectionLabel>
+                      <div className="flex items-center gap-4 font-mono text-[10.5px] tracking-[0.06em] text-[#78716C]">
+                        <div className="flex items-center gap-2">
+                          <span>team:</span>
+                          {(["All", "Engineering", "Design", "Product", "GTM", "Ops"] as const).map((t) => (
+                            <button key={t} type="button" onClick={() => setShipFilterTeam(t)} style={{ color: shipFilterTeam === t ? INK : MUTED }}>
+                              {t.toLowerCase()}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span>type:</span>
+                          {(["All", "feature", "fix", "refactor", "docs", "decision"] as const).map((t) => (
+                            <button key={t} type="button" onClick={() => setShipFilterType(t)} style={{ color: shipFilterType === t ? INK : MUTED }}>
+                              {t}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-3 overflow-hidden rounded-[4px] border" style={{ borderColor: BORDER, background: SURFACE }}>
+                      {filteredShipLog.map((s, i) => (
+                        <ShipRow key={s.id} entry={s} divider={i !== 0} />
+                      ))}
+                      {filteredShipLog.length === 0 ? (
+                        <div className="px-5 py-6 font-sans text-[13px] text-[#78716C]">No shipments match this filter.</div>
+                      ) : null}
+                    </div>
+                  </motion.section>
+                </>
+              ) : null}
+
+              {activeTab === "money" ? (
+                <motion.div variants={SECTION_VARIANTS}>
+                  <ActiveSubscriptions />
                 </motion.div>
               ) : null}
-            </AnimatePresence>
-          </section>
+            </motion.div>
+          </AnimatePresence>
 
-          {/* Footer pulse */}
-          <section className="mt-14 border-t pt-6" style={{ borderColor: BORDER }}>
-            <SectionLabel>Org pulse</SectionLabel>
-            <div className="mt-3 flex flex-wrap items-baseline gap-x-10 gap-y-3 font-mono text-[12px] text-[#1A1612]">
-              <span>
-                <span className="text-[#78716C]">eNPS</span> <span className="ml-1">{orgPulse.enps}</span>
-              </span>
-              <span>
-                <span className="text-[#78716C]">retention 30d</span> <span className="ml-1">{orgPulse.retention30}</span>
-              </span>
-              <span>
-                <span className="text-[#78716C]">retention 60d</span> <span className="ml-1">{orgPulse.retention60}</span>
-              </span>
-              <span>
-                <span className="text-[#78716C]">retention 90d</span> <span className="ml-1">{orgPulse.retention90}</span>
-              </span>
-              <span>
-                <span className="text-[#78716C]">active projects</span> <span className="ml-1">{orgPulse.activeProjects}</span>
-              </span>
-              <span>
-                <span className="text-[#78716C]">12w shipments</span> <span className="ml-1">{orgPulse.shipping12wk}</span>
-              </span>
-              <span>
-                <span className="text-[#78716C]">headcount</span> <span className="ml-1">{orgPulse.headcount}</span>
-              </span>
-            </div>
-            <p className="mt-5 font-mono text-[10px] tracking-[0.18em] text-[#78716C]">
-              ↳ press <span style={{ color: INK }}>⌘K</span> to ask socrates · press <span style={{ color: INK }}>A</span> to assign · right-click any person for actions
-            </p>
-          </section>
+          {/* Persistent footer hint */}
+          <p className="mt-16 border-t pt-4 font-mono text-[10px] tracking-[0.18em] text-[#78716C]" style={{ borderColor: BORDER }}>
+            ↳ press <span style={{ color: INK }}>⌘K</span> to ask socrates · press <span style={{ color: INK }}>A</span> to assign · right-click any person for actions
+          </p>
         </div>
       </motion.section>
 
