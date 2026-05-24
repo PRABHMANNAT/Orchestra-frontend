@@ -241,9 +241,18 @@ export function RelationshipWeb() {
       return null;
     }
 
+    const entranceStart = performance.now();
+
     function draw() {
       const { width, height } = state;
+      const now = performance.now();
+      const time = now / 1000;
+      const entranceT = Math.min(1, (now - entranceStart) / 900);
+      const easedEntrance = 1 - Math.pow(1 - entranceT, 3);
+
       ctx.clearRect(0, 0, width, height);
+
+      // Background dot grid — extremely faint, gives the canvas depth
       ctx.save();
       ctx.translate(state.offsetX, state.offsetY);
       ctx.scale(state.scale, state.scale);
@@ -258,48 +267,182 @@ export function RelationshipWeb() {
         }
       }
 
-      for (const link of state.links) {
-        const isFocused = !focusId || link.source.id === focusId || link.target.id === focusId;
-        const widthByWeight = Math.max(0.6, link.weight * 0.55);
-        ctx.globalAlpha = isFocused ? 1 : 0.22;
-        ctx.strokeStyle = isFocused ? "rgba(26,22,18,0.18)" : "rgba(26,22,18,0.06)";
-        ctx.lineWidth = widthByWeight;
-        ctx.beginPath();
-        const mx = (link.source.x + link.target.x) / 2;
-        const my = (link.source.y + link.target.y) / 2;
-        const dx = link.target.x - link.source.x;
-        const dy = link.target.y - link.source.y;
-        const bow = Math.min(28, Math.hypot(dx, dy) * 0.08);
-        const nx = (-dy / (Math.hypot(dx, dy) || 1)) * bow;
-        const ny = (dx / (Math.hypot(dx, dy) || 1)) * bow;
-        ctx.moveTo(link.source.x, link.source.y);
-        ctx.quadraticCurveTo(mx + nx, my + ny, link.target.x, link.target.y);
-        ctx.stroke();
+      // Faint sparse background dots in world space (gives a sense of "field")
+      const gridSize = 36;
+      const gridRange = 500;
+      ctx.globalAlpha = 0.06;
+      ctx.fillStyle = "#1A1612";
+      for (let gx = -gridRange; gx <= gridRange; gx += gridSize) {
+        for (let gy = -gridRange; gy <= gridRange; gy += gridSize) {
+          ctx.beginPath();
+          ctx.arc(gx, gy, 0.7, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
       ctx.globalAlpha = 1;
 
+      // ───── EDGES with traveling pulse comets ─────
+      for (const link of state.links) {
+        const isFocused = !focusId || link.source.id === focusId || link.target.id === focusId;
+        const isHubLink = link.source.type === "project" || link.target.type === "project";
+
+        // Curve geometry
+        const dx = link.target.x - link.source.x;
+        const dy = link.target.y - link.source.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const bow = Math.min(34, dist * 0.09);
+        const mx = (link.source.x + link.target.x) / 2;
+        const my = (link.source.y + link.target.y) / 2;
+        const nx = (-dy / dist) * bow;
+        const ny = (dx / dist) * bow;
+        const ctlX = mx + nx;
+        const ctlY = my + ny;
+
+        // Base curve — brighter when focused
+        const widthByWeight = Math.max(0.6, link.weight * 0.55);
+        ctx.globalAlpha = isFocused ? (focusId ? 0.42 : 0.24) : 0.06;
+        ctx.strokeStyle = isFocused
+          ? `rgba(26,22,18,${0.55})`
+          : "rgba(26,22,18,0.3)";
+        ctx.lineWidth = widthByWeight;
+        ctx.beginPath();
+        ctx.moveTo(link.source.x, link.source.y);
+        ctx.quadraticCurveTo(ctlX, ctlY, link.target.x, link.target.y);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+
+        // Traveling comets — speed up on focused/hub links
+        const drawPulses = !state.reducedMotion && isFocused;
+        if (drawPulses) {
+          const isFocusEdge = focusId && (link.source.id === focusId || link.target.id === focusId);
+          const speed = isFocusEdge ? 0.9 : isHubLink ? 0.42 : 0.28;
+          const pulseCount = isFocusEdge ? 3 : isHubLink ? 2 : 1;
+          // Direction: pulses flow OUT from project hubs (or out of focused node)
+          let outwardFromSource = link.source.type === "project";
+          if (focusId) outwardFromSource = link.source.id === focusId;
+
+          const sourceColor = COLORS[(outwardFromSource ? link.source.type : link.target.type)];
+
+          for (let p = 0; p < pulseCount; p++) {
+            const offset = p / pulseCount;
+            // Deterministic phase based on edge geometry so they don't all sync
+            const phaseSeed = (link.source.x + link.target.y) * 0.0017;
+            const tRaw = ((time * speed) + offset + phaseSeed) % 1;
+            const tt = outwardFromSource ? tRaw : 1 - tRaw;
+            // 4-step comet trail
+            const TRAIL = 5;
+            for (let trail = 0; trail < TRAIL; trail++) {
+              const tt2 = tt - trail * 0.022 * (outwardFromSource ? 1 : -1);
+              if (tt2 < 0 || tt2 > 1) continue;
+              const u = 1 - tt2;
+              const px = u * u * link.source.x + 2 * u * tt2 * ctlX + tt2 * tt2 * link.target.x;
+              const py = u * u * link.source.y + 2 * u * tt2 * ctlY + tt2 * tt2 * link.target.y;
+              const trailAlpha = (1 - trail / TRAIL) * (isFocusEdge ? 1 : 0.7);
+              const radius = (2.4 - trail * 0.35) * (isFocusEdge ? 1.2 : 1);
+              ctx.globalAlpha = trailAlpha;
+              ctx.fillStyle = sourceColor;
+              ctx.beginPath();
+              ctx.arc(px, py, Math.max(0.4, radius), 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+          ctx.globalAlpha = 1;
+        }
+      }
+
+      // ───── BREATHING RINGS on project hubs ─────
+      if (!state.reducedMotion) {
+        for (const node of state.nodes) {
+          if (node.type !== "project") continue;
+          const dim = focusId && !connected.has(node.id);
+          if (dim) continue;
+          const baseR = node.radius * easedEntrance;
+          // 2 expanding rings with offset phases
+          for (let ring = 0; ring < 2; ring++) {
+            const ringPhase = ((time / 3.6) + ring * 0.5 + node.x * 0.0009) % 1;
+            const ringR = baseR + ringPhase * 40;
+            const ringAlpha = (1 - ringPhase) * 0.22;
+            ctx.globalAlpha = ringAlpha;
+            ctx.strokeStyle = COLORS[node.type];
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, ringR, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // ───── NODES ─────
       for (const node of state.nodes) {
         const dim = focusId && !connected.has(node.id);
-        ctx.globalAlpha = dim ? 0.2 : 1;
-        ctx.fillStyle = COLORS[node.type];
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
-        ctx.fill();
+        const isFocus = focusId === node.id;
+        const nodeAlpha = dim ? 0.18 : 1;
+        const r = node.radius * easedEntrance;
 
-        if (focusId === node.id) {
-          ctx.strokeStyle = "#1A1612";
-          ctx.lineWidth = 1.5;
+        // Focal pulse ring on hover/selected node
+        if (isFocus && !state.reducedMotion) {
+          const pulse = 0.5 + 0.5 * Math.sin(time * 4);
+          ctx.globalAlpha = 0.25 + pulse * 0.4;
+          ctx.strokeStyle = COLORS[node.type];
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, r + 8 + pulse * 4, 0, Math.PI * 2);
           ctx.stroke();
+          // outer dotted ring
+          ctx.globalAlpha = 0.18;
+          ctx.setLineDash([3, 3]);
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, r + 16 + pulse * 4, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 1;
         }
 
-        ctx.fillStyle = dim ? "rgba(26,22,18,0.34)" : "#1A1612";
+        // Soft glow halo (no neon, just subtle warm bleed)
+        ctx.globalAlpha = nodeAlpha * 0.16;
+        ctx.fillStyle = COLORS[node.type];
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, r + 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Node body
+        ctx.globalAlpha = nodeAlpha;
+        ctx.fillStyle = COLORS[node.type];
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Inner highlight (top-left soft white) — gives a 3D feel
+        ctx.globalAlpha = nodeAlpha * 0.4;
+        ctx.fillStyle = "rgba(255,255,255,0.55)";
+        ctx.beginPath();
+        ctx.arc(node.x - r * 0.32, node.y - r * 0.32, r * 0.45, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Outer outline ring
+        ctx.globalAlpha = nodeAlpha * 0.7;
+        ctx.strokeStyle = "rgba(26,22,18,0.32)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Label with subtle paint-order outline so it reads over any background
+        ctx.globalAlpha = dim ? 0.34 : 1;
         ctx.font =
           node.type === "project"
             ? "600 13px Georgia, ui-serif, serif"
             : "500 10.5px Geist, -apple-system, system-ui, sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
-        ctx.fillText(node.label, node.x, node.y + node.radius + 6, node.type === "project" ? 132 : 108);
+        // halo
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "rgba(240,233,223,0.85)";
+        ctx.strokeText(node.label, node.x, node.y + r + 6, node.type === "project" ? 132 : 108);
+        ctx.fillStyle = dim ? "rgba(26,22,18,0.34)" : "#1A1612";
+        ctx.fillText(node.label, node.x, node.y + r + 6, node.type === "project" ? 132 : 108);
+
         ctx.globalAlpha = 1;
       }
 
@@ -310,7 +453,11 @@ export function RelationshipWeb() {
       if (state.inView && !state.reducedMotion && state.simulation && state.simulation.alpha() > 0.002) {
         state.simulation.tick();
       }
-      draw();
+      // Always redraw — even when physics has settled, the comet pulses and
+      // breathing rings need a fresh frame.
+      if (state.inView) {
+        draw();
+      }
       state.animationId = requestAnimationFrame(loop);
     }
 
