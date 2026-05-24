@@ -1,0 +1,492 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  forceCenter,
+  forceCollide,
+  forceLink,
+  forceManyBody,
+  forceSimulation,
+  forceX,
+  forceY,
+  type Simulation,
+  type SimulationLinkDatum,
+  type SimulationNodeDatum
+} from "d3-force";
+import { WEB_LINKS, WEB_NODES, type WebNode, type WebNodeType } from "../data/mockBrainData";
+
+const COLORS: Record<WebNodeType, string> = {
+  project: "#B8543D",
+  doc: "#3B82C4",
+  decision: "#7A8C5F",
+  person: "#C28840",
+  customer: "#8B7FD4"
+};
+
+const LABELS: Record<WebNodeType, string> = {
+  project: "Project",
+  doc: "Document",
+  decision: "Decision",
+  person: "Person",
+  customer: "Customer"
+};
+
+type SimNode = WebNode &
+  SimulationNodeDatum & {
+    x: number;
+    y: number;
+    radius: number;
+  };
+
+type RawSimLink = SimulationLinkDatum<SimNode> & {
+  weight: number;
+};
+
+type SimLink = RawSimLink & {
+  source: SimNode;
+  target: SimNode;
+};
+
+type PointerWorld = {
+  screenX: number;
+  screenY: number;
+  x: number;
+  y: number;
+};
+
+function hashString(value: string) {
+  let h = 0;
+  for (let index = 0; index < value.length; index++) {
+    h = (h << 5) - h + value.charCodeAt(index);
+    h |= 0;
+  }
+  return Math.abs(h);
+}
+
+function seededUnit(seed: number) {
+  const x = Math.sin(seed * 12.9898) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+function createNodes(): SimNode[] {
+  const projectIds = WEB_NODES.filter((node) => node.type === "project").map((node) => node.id);
+
+  return WEB_NODES.map((node, index) => {
+    const seed = hashString(node.id);
+    const projectIndex = projectIds.indexOf(node.id);
+    const isProject = projectIndex >= 0;
+    const angle = isProject ? (projectIndex / projectIds.length) * Math.PI * 2 : (index / WEB_NODES.length) * Math.PI * 2;
+    const radius = isProject ? 68 : 185 + seededUnit(seed + 3) * 78;
+
+    return {
+      ...node,
+      radius: node.size,
+      x: Math.cos(angle) * radius + (seededUnit(seed + 11) - 0.5) * 28,
+      y: Math.sin(angle) * radius + (seededUnit(seed + 19) - 0.5) * 28,
+      vx: 0,
+      vy: 0
+    };
+  });
+}
+
+export function RelationshipWeb() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [hoverId, setHoverId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const stateRef = useRef<{
+    nodes: SimNode[];
+    links: SimLink[];
+    simulation: Simulation<SimNode, undefined> | null;
+    scale: number;
+    offsetX: number;
+    offsetY: number;
+    width: number;
+    height: number;
+    dragNode: SimNode | null;
+    dragOffsetX: number;
+    dragOffsetY: number;
+    dragMoved: boolean;
+    pointerStart: { x: number; y: number } | null;
+    panFrom: { x: number; y: number } | null;
+    reducedMotion: boolean;
+    hoverId: string | null;
+    selectedId: string | null;
+    animationId: number;
+    inView: boolean;
+  }>({
+    nodes: [],
+    links: [],
+    simulation: null,
+    scale: 1,
+    offsetX: 0,
+    offsetY: 0,
+    width: 0,
+    height: 0,
+    dragNode: null,
+    dragOffsetX: 0,
+    dragOffsetY: 0,
+    dragMoved: false,
+    pointerStart: null,
+    panFrom: null,
+    reducedMotion: false,
+    hoverId: null,
+    selectedId: null,
+    animationId: 0,
+    inView: true
+  });
+
+  useEffect(() => {
+    stateRef.current.hoverId = hoverId;
+  }, [hoverId]);
+
+  useEffect(() => {
+    stateRef.current.selectedId = selectedId;
+  }, [selectedId]);
+
+  useEffect(() => {
+    const canvasElement = canvasRef.current;
+    const wrapElement = wrapRef.current;
+    if (!canvasElement || !wrapElement) return;
+
+    const context = canvasElement.getContext("2d");
+    if (!context) return;
+
+    const canvas = canvasElement;
+    const wrap = wrapElement;
+    const ctx = context;
+
+    const state = stateRef.current;
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    state.reducedMotion = media.matches;
+
+    const nodes = createNodes();
+    const links: RawSimLink[] = WEB_LINKS.map((link) => ({
+      source: link.source,
+      target: link.target,
+      weight: link.weight
+    }));
+
+    const simulation = forceSimulation<SimNode>(nodes)
+      .force(
+        "link",
+        forceLink<SimNode, RawSimLink>(links)
+          .id((node) => node.id)
+          .distance((link) => 116 - link.weight * 13)
+          .strength((link) => 0.035 + link.weight * 0.025)
+      )
+      .force("charge", forceManyBody<SimNode>().strength((node) => (node.type === "project" ? -520 : -270)))
+      .force("collide", forceCollide<SimNode>().radius((node) => node.radius + 18).iterations(2))
+      .force("center", forceCenter<SimNode>(0, 0))
+      .force("x", forceX<SimNode>(0).strength((node) => (node.type === "project" ? 0.065 : 0.018)))
+      .force("y", forceY<SimNode>(0).strength((node) => (node.type === "project" ? 0.065 : 0.018)))
+      .stop();
+
+    state.nodes = nodes;
+    state.links = links.filter((link): link is SimLink => typeof link.source !== "string" && typeof link.target !== "string");
+    state.simulation = simulation;
+
+    for (let tick = 0; tick < (state.reducedMotion ? 220 : 44); tick++) {
+      simulation.tick();
+    }
+    if (state.reducedMotion) {
+      simulation.alpha(0);
+    }
+
+    function resize() {
+      const rect = wrap.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      state.width = rect.width;
+      state.height = rect.height;
+      if (!state.panFrom && !state.dragNode) {
+        state.offsetX = rect.width / 2;
+        state.offsetY = rect.height / 2;
+      }
+    }
+
+    resize();
+    const resizeObserver = new ResizeObserver(resize);
+    resizeObserver.observe(wrap);
+
+    const intersectionObserver = new IntersectionObserver(
+      (entries) => {
+        state.inView = entries.some((entry) => entry.isIntersecting);
+      },
+      { threshold: 0.01 }
+    );
+    intersectionObserver.observe(wrap);
+
+    function eventToWorld(event: PointerEvent | WheelEvent): PointerWorld {
+      const rect = canvas.getBoundingClientRect();
+      const screenX = event.clientX - rect.left;
+      const screenY = event.clientY - rect.top;
+      return {
+        screenX,
+        screenY,
+        x: (screenX - state.offsetX) / state.scale,
+        y: (screenY - state.offsetY) / state.scale
+      };
+    }
+
+    function pickNode(x: number, y: number) {
+      for (let index = state.nodes.length - 1; index >= 0; index--) {
+        const node = state.nodes[index];
+        const dx = x - node.x;
+        const dy = y - node.y;
+        if (dx * dx + dy * dy <= (node.radius + 4) * (node.radius + 4)) return node;
+      }
+      return null;
+    }
+
+    function draw() {
+      const { width, height } = state;
+      ctx.clearRect(0, 0, width, height);
+      ctx.save();
+      ctx.translate(state.offsetX, state.offsetY);
+      ctx.scale(state.scale, state.scale);
+
+      const focusId = state.hoverId ?? state.selectedId;
+      const connected = new Set<string>();
+      if (focusId) {
+        connected.add(focusId);
+        for (const link of state.links) {
+          if (link.source.id === focusId) connected.add(link.target.id);
+          if (link.target.id === focusId) connected.add(link.source.id);
+        }
+      }
+
+      for (const link of state.links) {
+        const isFocused = !focusId || link.source.id === focusId || link.target.id === focusId;
+        const widthByWeight = Math.max(0.6, link.weight * 0.55);
+        ctx.globalAlpha = isFocused ? 1 : 0.22;
+        ctx.strokeStyle = isFocused ? "rgba(26,22,18,0.18)" : "rgba(26,22,18,0.06)";
+        ctx.lineWidth = widthByWeight;
+        ctx.beginPath();
+        const mx = (link.source.x + link.target.x) / 2;
+        const my = (link.source.y + link.target.y) / 2;
+        const dx = link.target.x - link.source.x;
+        const dy = link.target.y - link.source.y;
+        const bow = Math.min(28, Math.hypot(dx, dy) * 0.08);
+        const nx = (-dy / (Math.hypot(dx, dy) || 1)) * bow;
+        const ny = (dx / (Math.hypot(dx, dy) || 1)) * bow;
+        ctx.moveTo(link.source.x, link.source.y);
+        ctx.quadraticCurveTo(mx + nx, my + ny, link.target.x, link.target.y);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+
+      for (const node of state.nodes) {
+        const dim = focusId && !connected.has(node.id);
+        ctx.globalAlpha = dim ? 0.2 : 1;
+        ctx.fillStyle = COLORS[node.type];
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (focusId === node.id) {
+          ctx.strokeStyle = "#1A1612";
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
+
+        ctx.fillStyle = dim ? "rgba(26,22,18,0.34)" : "#1A1612";
+        ctx.font =
+          node.type === "project"
+            ? "600 13px Georgia, ui-serif, serif"
+            : "500 10.5px Geist, -apple-system, system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillText(node.label, node.x, node.y + node.radius + 6, node.type === "project" ? 132 : 108);
+        ctx.globalAlpha = 1;
+      }
+
+      ctx.restore();
+    }
+
+    function loop() {
+      if (state.inView && !state.reducedMotion && state.simulation && state.simulation.alpha() > 0.002) {
+        state.simulation.tick();
+      }
+      draw();
+      state.animationId = requestAnimationFrame(loop);
+    }
+
+    function onPointerMove(event: PointerEvent) {
+      const pointer = eventToWorld(event);
+      if (state.dragNode) {
+        state.dragNode.fx = pointer.x - state.dragOffsetX;
+        state.dragNode.fy = pointer.y - state.dragOffsetY;
+        if (state.pointerStart && Math.hypot(event.clientX - state.pointerStart.x, event.clientY - state.pointerStart.y) > 4) {
+          state.dragMoved = true;
+        }
+        state.simulation?.alpha(0.22);
+        canvas.style.cursor = "grabbing";
+        return;
+      }
+
+      if (state.panFrom) {
+        state.offsetX += event.clientX - state.panFrom.x;
+        state.offsetY += event.clientY - state.panFrom.y;
+        state.panFrom = { x: event.clientX, y: event.clientY };
+        canvas.style.cursor = "grabbing";
+        return;
+      }
+
+      const hit = pickNode(pointer.x, pointer.y);
+      const nextHoverId = hit?.id ?? null;
+      if (nextHoverId !== state.hoverId) {
+        setHoverId(nextHoverId);
+      }
+      canvas.style.cursor = hit ? "pointer" : "grab";
+    }
+
+    function onPointerDown(event: PointerEvent) {
+      const pointer = eventToWorld(event);
+      const hit = pickNode(pointer.x, pointer.y);
+      canvas.setPointerCapture(event.pointerId);
+      if (hit) {
+        state.dragNode = hit;
+        state.dragOffsetX = pointer.x - hit.x;
+        state.dragOffsetY = pointer.y - hit.y;
+        state.dragMoved = false;
+        state.pointerStart = { x: event.clientX, y: event.clientY };
+        hit.fx = hit.x;
+        hit.fy = hit.y;
+        state.simulation?.alpha(0.24);
+      } else {
+        state.panFrom = { x: event.clientX, y: event.clientY };
+      }
+    }
+
+    function onPointerUp(event: PointerEvent) {
+      if (state.dragNode) {
+        if (!state.dragMoved) {
+          setSelectedId((current) => (current === state.dragNode?.id ? null : state.dragNode?.id ?? null));
+        }
+        state.dragNode.fx = null;
+        state.dragNode.fy = null;
+        state.dragNode = null;
+        state.pointerStart = null;
+        state.simulation?.alpha(0.16);
+      }
+      state.panFrom = null;
+      if (canvas.hasPointerCapture(event.pointerId)) {
+        canvas.releasePointerCapture(event.pointerId);
+      }
+      canvas.style.cursor = "grab";
+    }
+
+    function onPointerLeave() {
+      if (!state.dragNode && !state.panFrom) {
+        setHoverId(null);
+      }
+    }
+
+    function onWheel(event: WheelEvent) {
+      event.preventDefault();
+      const pointer = eventToWorld(event);
+      const zoom = 1 - event.deltaY * 0.0012;
+      const nextScale = Math.max(0.5, Math.min(2.35, state.scale * zoom));
+      state.offsetX = pointer.screenX - pointer.x * nextScale;
+      state.offsetY = pointer.screenY - pointer.y * nextScale;
+      state.scale = nextScale;
+    }
+
+    canvas.addEventListener("pointermove", onPointerMove);
+    canvas.addEventListener("pointerdown", onPointerDown);
+    canvas.addEventListener("pointerup", onPointerUp);
+    canvas.addEventListener("pointerleave", onPointerLeave);
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+
+    loop();
+
+    return () => {
+      cancelAnimationFrame(state.animationId);
+      simulation.stop();
+      canvas.removeEventListener("pointermove", onPointerMove);
+      canvas.removeEventListener("pointerdown", onPointerDown);
+      canvas.removeEventListener("pointerup", onPointerUp);
+      canvas.removeEventListener("pointerleave", onPointerLeave);
+      canvas.removeEventListener("wheel", onWheel);
+      resizeObserver.disconnect();
+      intersectionObserver.disconnect();
+    };
+  }, []);
+
+  const hoveredNode = useMemo(() => WEB_NODES.find((node) => node.id === hoverId) ?? null, [hoverId]);
+  const selectedNode = useMemo(() => WEB_NODES.find((node) => node.id === selectedId) ?? null, [selectedId]);
+  const selectedLinks = useMemo(() => {
+    if (!selectedId) return [];
+    return WEB_LINKS.filter((link) => link.source === selectedId || link.target === selectedId)
+      .map((link) => {
+        const otherId = link.source === selectedId ? link.target : link.source;
+        const node = WEB_NODES.find((item) => item.id === otherId);
+        return node ? { node, weight: link.weight } : null;
+      })
+      .filter(Boolean) as { node: WebNode; weight: number }[];
+  }, [selectedId]);
+
+  return (
+    <div className="relative flex h-full min-h-0 flex-col">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A7E6F]">Context Web</span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#A89C8A]">pan / zoom / hover / click</span>
+      </div>
+
+      <div
+        ref={wrapRef}
+        className="relative flex-1 overflow-hidden rounded-[4px] border border-[rgba(26,22,18,0.08)] bg-[#F0E9DF]"
+      >
+        <canvas ref={canvasRef} className="absolute inset-0 cursor-grab" />
+
+        {selectedNode ? (
+          <div className="absolute right-3 top-3 w-[280px] rounded-[4px] border border-[rgba(26,22,18,0.1)] bg-white p-3 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="font-serif text-[15px] leading-tight text-[#1A1612]">{selectedNode.label}</div>
+                <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#8A7E6F]">
+                  {LABELS[selectedNode.type]} node
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedId(null)}
+                className="rounded-[3px] border border-[rgba(26,22,18,0.1)] px-1.5 py-0.5 font-mono text-[10px] text-[#8A7E6F] hover:bg-[#FAF8F5]"
+              >
+                Close
+              </button>
+            </div>
+            <div className="mt-3 space-y-1.5">
+              {selectedLinks.slice(0, 5).map(({ node, weight }) => (
+                <div key={node.id} className="flex items-center justify-between gap-3 font-mono text-[10px] text-[#5A5450]">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: COLORS[node.type] }} />
+                    <span className="truncate">{node.label}</span>
+                  </span>
+                  <span className="text-[#A89C8A]">x{weight}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : hoveredNode ? (
+          <div className="pointer-events-none absolute left-3 top-3 max-w-[240px] rounded-[4px] border border-[rgba(26,22,18,0.12)] bg-white px-3 py-2 shadow-sm">
+            <div className="font-serif text-[13px] text-[#1A1612]">{hoveredNode.label}</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#8A7E6F]">{LABELS[hoveredNode.type]}</div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+        {(Object.keys(COLORS) as WebNodeType[]).map((type) => (
+          <div key={type} className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-[#5A5450]">
+            <span className="inline-block h-2 w-2 rounded-full" style={{ background: COLORS[type] }} />
+            {LABELS[type]}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
