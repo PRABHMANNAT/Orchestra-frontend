@@ -6,9 +6,10 @@ import { RelationshipWeb } from "./components/RelationshipWeb";
 import { SourcesStrip } from "./components/SourcesStrip";
 import { IngestionRiver } from "./components/IngestionRiver";
 import { DocumentsView } from "./components/DocumentsView";
+import { MemorySection } from "./components/MemorySection";
 import { BrainPulse } from "./components/BrainPulse";
 import { BrainStats } from "./components/BrainStats";
-import { SearchExpanded, SearchEmptyState } from "./components/SearchExpanded";
+import { SearchExpanded } from "./components/SearchExpanded";
 import { DocumentDrawer } from "./components/DocumentDrawer";
 import { CaptureModal } from "./components/CaptureModal";
 import type { Doc, DomainId } from "./data/mockBrainData";
@@ -37,10 +38,9 @@ export function BrainPage() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[1640px] px-5 pb-12 md:px-8">
-          {/* Hero — full width */}
           <HeroZone />
 
-          {/* Signature visual row: Globe 45% + Stats 55% */}
+          {/* Signature row: Globe (45%) + Stats (55%) */}
           <section className="pb-10">
             <div className="flex flex-col gap-6 lg:flex-row">
               <div className="h-[600px] xl:h-[680px] lg:basis-[45%]">
@@ -52,22 +52,22 @@ export function BrainPage() {
             </div>
           </section>
 
-          {/* Workhorse: full width (agents rail removed) */}
           <SourcesStrip />
           <IngestionRiver />
 
-          <section className="pb-6">
-            <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A7E6F]">
-              Quick Surface
-            </div>
-            <SearchEmptyState />
-          </section>
+          {/* Memory clusters — visual blocks per domain */}
+          <MemorySection
+            selectedDomain={selectedDomain}
+            onSelectDomain={setSelectedDomain}
+            onSelectDoc={setSelectedDoc}
+          />
 
+          {/* People + projects */}
           <DocumentsView selectedDomain={selectedDomain} onSelectDoc={setSelectedDoc} />
 
           <BrainPulse />
 
-          {/* Relationship Web — full content width, below everything */}
+          {/* Relationship Web — full content width */}
           <section className="mt-10 pt-10 border-t border-[rgba(26,22,18,0.08)]">
             <div className="mb-6 flex items-end justify-between gap-4">
               <div>

@@ -1,4 +1,5 @@
 import { SOURCES, type Source } from "../data/mockBrainData";
+import { SourceLogo } from "./SourceLogos";
 
 const STATUS_COLOR: Record<Source["status"], string> = {
   synced: "#7A8C5F",
@@ -17,33 +18,6 @@ function timeAgo(iso: string): string {
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   return `${d}d ago`;
-}
-
-function SourceLogo({ id }: { id: string }) {
-  // Tasteful, monogram-style logo (warm tone, no neon)
-  const letter = id.slice(0, 1).toUpperCase();
-  const colors: Record<string, string> = {
-    github: "#1A1612",
-    gdrive: "#5E7A8C",
-    slack: "#8B7FD4",
-    notion: "#3B3733",
-    figma: "#B8543D",
-    linear: "#5A5450",
-    vscode: "#3B82C4",
-    cursor: "#1A1612",
-    antigravity: "#7A8C5F",
-    gmail: "#9E3B2E",
-    fireflies: "#C28840",
-    manual: "#8A7E6F"
-  };
-  return (
-    <div
-      className="flex h-7 w-7 items-center justify-center rounded-[4px] font-mono text-[12px] text-white"
-      style={{ background: colors[id] ?? "#5A5450" }}
-    >
-      {letter}
-    </div>
-  );
 }
 
 export function SourcesStrip() {

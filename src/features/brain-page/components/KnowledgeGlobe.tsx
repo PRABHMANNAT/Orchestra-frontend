@@ -1,7 +1,4 @@
-import { Canvas, useFrame } from "@react-three/fiber";
-import { Html, OrbitControls } from "@react-three/drei";
 import { useEffect, useMemo, useRef, useState } from "react";
-import * as THREE from "three";
 import { DOMAINS, type Domain, type DomainId } from "../data/mockBrainData";
 
 type GlobeProps = {
@@ -9,328 +6,217 @@ type GlobeProps = {
   onSelectDomain: (id: DomainId | null) => void;
 };
 
-type Lobe = {
-  center: THREE.Vector3;
-  size: number;
-};
-
-type Placement = {
-  domain: Domain;
-  center: THREE.Vector3;
-  angularSize: number;
-  lobes: Lobe[];
-};
-
-const RADIUS = 1.58;
-const ROTATION_SPEED = (Math.PI * 2) / 60;
+/* ============ utilities ============ */
 
 function hashString(value: string) {
-  let h = 2166136261;
+  let h = 0;
   for (let i = 0; i < value.length; i++) {
-    h ^= value.charCodeAt(i);
-    h = Math.imul(h, 16777619);
+    h = (h << 5) - h + value.charCodeAt(i);
+    h |= 0;
   }
-  return Math.abs(h);
+  return Math.abs(h) || 1;
 }
 
-function seededUnit(seed: number) {
-  const x = Math.sin(seed * 12.9898) * 43758.5453;
-  return x - Math.floor(x);
+function seedRandom(seed: number) {
+  let s = seed % 2147483647;
+  if (s <= 0) s += 2147483646;
+  return () => {
+    s = (s * 16807) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
 }
 
-function tangentBasis(center: THREE.Vector3) {
-  const up = Math.abs(center.y) > 0.92 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
-  const axisA = new THREE.Vector3().crossVectors(up, center).normalize();
-  const axisB = new THREE.Vector3().crossVectors(center, axisA).normalize();
-  return { axisA, axisB };
+function clamp(n: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, n));
 }
 
-function surfaceNoise(dir: THREE.Vector3, seed: number) {
-  const value = Math.sin((dir.x * 18.93 + dir.y * 47.21 + dir.z * 31.77 + seed * 0.13) * 19.17) * 999.7;
-  return value - Math.floor(value);
+function angularDistance(lonA: number, latA: number, lonB: number, latB: number) {
+  const toRad = Math.PI / 180;
+  const aLat = latA * toRad;
+  const bLat = latB * toRad;
+  const dLon = (lonA - lonB) * toRad;
+  const dot = Math.sin(aLat) * Math.sin(bLat) + Math.cos(aLat) * Math.cos(bLat) * Math.cos(dLon);
+  return Math.acos(clamp(dot, -1, 1)) / toRad;
 }
 
-function makeLobe(center: THREE.Vector3, baseSize: number, seed: number, index: number): Lobe {
-  if (index === 0) return { center: center.clone(), size: baseSize * 0.94 };
-  const { axisA, axisB } = tangentBasis(center);
-  const angle = seededUnit(seed + index * 17) * Math.PI * 2;
-  const spread = baseSize * (0.22 + seededUnit(seed + index * 23) * 0.42);
-  const size = baseSize * (0.48 + seededUnit(seed + index * 31) * 0.3);
-  const shifted = center
-    .clone()
-    .multiplyScalar(Math.cos(spread))
-    .add(axisA.clone().multiplyScalar(Math.sin(spread) * Math.cos(angle)))
-    .add(axisB.clone().multiplyScalar(Math.sin(spread) * Math.sin(angle)))
-    .normalize();
-  return { center: shifted, size };
-}
+/* ============ domain centers (deterministic placement around the sphere) ============ */
 
-function continentPlacements(): Placement[] {
-  const total = DOMAINS.reduce((sum, domain) => sum + domain.docCount, 0);
-  const golden = Math.PI * (3 - Math.sqrt(5));
+type DomainCenter = Domain & { lon: number; lat: number };
 
-  return DOMAINS.map((domain, index) => {
-    const y = 1 - (index / (DOMAINS.length - 1)) * 2;
-    const ring = Math.sqrt(1 - y * y);
-    const theta = golden * index + 0.42;
-    const center = new THREE.Vector3(Math.cos(theta) * ring, y, Math.sin(theta) * ring).normalize();
-    const angularSize = Math.sqrt(domain.docCount / total) * 1.55 + 0.22;
-    const seed = hashString(domain.id);
-    const lobes = Array.from({ length: 5 }, (_, lobeIndex) => makeLobe(center, angularSize, seed, lobeIndex));
-    return { domain, center, angularSize, lobes };
-  });
-}
+const DOMAIN_CENTERS: DomainCenter[] = (() => {
+  // Hand-tuned positions so the bigger continents face the viewer when idle.
+  const positions: Record<DomainId, { lon: number; lat: number }> = {
+    engineering: { lon: -25, lat: 28 },
+    northstar: { lon: 35, lat: 12 },
+    sales: { lon: 95, lat: 42 },
+    apollo: { lon: -110, lat: 8 },
+    design: { lon: -65, lat: -22 },
+    onboarding: { lon: 145, lat: -10 },
+    acme: { lon: 60, lat: -38 },
+    legal: { lon: -160, lat: 52 }
+  };
+  return DOMAINS.map((d) => ({ ...d, ...positions[d.id] }));
+})();
 
-const PLACEMENTS = continentPlacements();
+/* ============ Voronoi-style coverage cells, colored by closest domain ============ */
 
-function findDomainAtDirection(direction: THREE.Vector3) {
-  let best: { placement: Placement; strength: number } | null = null;
+type CoverageCell = {
+  id: string;
+  domainId: DomainId;
+  color: string;
+  points: { lon: number; lat: number }[];
+  strength: number;
+};
 
-  for (const placement of PLACEMENTS) {
-    const seed = hashString(placement.domain.id);
-    for (const lobe of placement.lobes) {
-      const dot = Math.max(-1, Math.min(1, direction.dot(lobe.center)));
-      const angle = Math.acos(dot);
-      const raggedEdge = 0.9 + surfaceNoise(direction, seed) * 0.22;
-      const limit = lobe.size * raggedEdge;
-      if (angle < limit) {
-        const strength = 1 - angle / limit;
-        if (!best || strength > best.strength) {
-          best = { placement, strength };
+const COVERAGE_CELLS: CoverageCell[] = (() => {
+  const cells: CoverageCell[] = [];
+  const lonStep = 18;
+  const latStep = 15;
+
+  const totalDocs = DOMAINS.reduce((s, d) => s + d.docCount, 0);
+
+  for (let lat = -90; lat < 90; lat += latStep) {
+    for (let lon = -180; lon < 180; lon += lonStep) {
+      const centerLon = lon + lonStep / 2;
+      const centerLat = lat + latStep / 2;
+      let owner = DOMAIN_CENTERS[0];
+      let bestScore = Number.POSITIVE_INFINITY;
+      for (const dc of DOMAIN_CENTERS) {
+        const noise = (seedRandom(hashString(`${lon}:${lat}:${dc.id}`))() - 0.5) * 22;
+        // bigger domains pull territory; weight by sqrt of doc share
+        const pull = (dc.docCount / totalDocs) * 90;
+        const score = angularDistance(centerLon, centerLat, dc.lon, dc.lat) + noise - pull;
+        if (score < bestScore) {
+          owner = dc;
+          bestScore = score;
         }
       }
+
+      cells.push({
+        id: `${lon}:${lat}`,
+        domainId: owner.id,
+        color: owner.color,
+        points: [
+          { lon, lat },
+          { lon: lon + lonStep, lat },
+          { lon: lon + lonStep, lat: lat + latStep },
+          { lon, lat: lat + latStep }
+        ],
+        strength: clamp(1 - bestScore / 110, 0.45, 1)
+      });
     }
   }
 
-  return best;
-}
+  return cells;
+})();
 
-function buildPins() {
-  const pins: { pos: THREE.Vector3; domainId: DomainId }[] = [];
+/* ============ landmark pins (top contributors per domain) ============ */
 
-  for (const placement of PLACEMENTS) {
-    const seed = hashString(placement.domain.id);
-    const count = Math.max(8, Math.min(34, Math.round(placement.domain.docCount / 11)));
+type Landmark = {
+  domainId: DomainId;
+  name: string;
+  initials: string;
+  lon: number;
+  lat: number;
+  color: string;
+};
 
-    for (let pinIndex = 0; pinIndex < count; pinIndex++) {
-      const lobe = placement.lobes[pinIndex % placement.lobes.length];
-      const { axisA, axisB } = tangentBasis(lobe.center);
-      const angle = lobe.size * 0.68 * Math.sqrt(seededUnit(seed + pinIndex * 19 + 7));
-      const phi = seededUnit(seed + pinIndex * 29 + 3) * Math.PI * 2;
-      const direction = lobe.center
-        .clone()
-        .multiplyScalar(Math.cos(angle))
-        .add(axisA.clone().multiplyScalar(Math.sin(angle) * Math.cos(phi)))
-        .add(axisB.clone().multiplyScalar(Math.sin(angle) * Math.sin(phi)))
-        .normalize();
-
-      pins.push({ pos: direction.multiplyScalar(RADIUS * 1.014), domainId: placement.domain.id });
-    }
-  }
-
-  return pins;
-}
-
-function Sphere({
-  selectedDomain,
-  onSelectDomain,
-  reducedMotion,
-  setHover
-}: GlobeProps & {
-  reducedMotion: boolean;
-  setHover: (hover: { domain: Domain; x: number; y: number } | null) => void;
-}) {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const groupRef = useRef<THREE.Group>(null);
-  const [autoRotate, setAutoRotate] = useState(true);
-
-  useFrame((_, delta) => {
-    if (!reducedMotion && autoRotate && groupRef.current) {
-      groupRef.current.rotation.y += delta * ROTATION_SPEED;
-    }
+const LANDMARKS: Landmark[] = DOMAIN_CENTERS.flatMap((dc) => {
+  const rng = seedRandom(hashString(dc.id));
+  return dc.contributors.slice(0, 3).map((name) => {
+    const initials = name
+      .split(" ")
+      .map((p) => p[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase();
+    return {
+      domainId: dc.id,
+      name,
+      initials,
+      lon: dc.lon + (rng() - 0.5) * 28,
+      lat: clamp(dc.lat + (rng() - 0.5) * 24, -75, 75),
+      color: dc.color
+    };
   });
+});
 
-  const geometry = useMemo(() => {
-    const geom = new THREE.SphereGeometry(RADIUS, 96, 60);
-    const pos = geom.attributes.position;
-    const colors = new Float32Array(pos.count * 3);
-    const oceanDeep = new THREE.Color("#D8C5AE");
-    const oceanLight = new THREE.Color("#EBDDC9");
-    const shelf = new THREE.Color("#C9B69A");
-    const tmp = new THREE.Vector3();
-
-    for (let index = 0; index < pos.count; index++) {
-      tmp.set(pos.getX(index), pos.getY(index), pos.getZ(index)).normalize();
-      const domainHit = findDomainAtDirection(tmp);
-
-      // Latitude banding: subtle warmer ocean at equator, cooler/lighter at poles
-      const lat = Math.abs(tmp.y); // 0 at equator, 1 at poles
-      const oceanBand = oceanDeep.clone().lerp(oceanLight, lat * 0.55 + 0.15);
-
-      // tiny per-vertex noise so ocean isn't perfectly smooth
-      const grain = surfaceNoise(tmp, 0) * 0.04 - 0.02;
-      oceanBand.offsetHSL(0, 0, grain);
-
-      const color = domainHit
-        ? oceanBand
-            .clone()
-            .lerp(shelf, 0.18)
-            .lerp(new THREE.Color(domainHit.placement.domain.color), 0.62 + domainHit.strength * 0.28)
-        : oceanBand;
-
-      colors[index * 3] = color.r;
-      colors[index * 3 + 1] = color.g;
-      colors[index * 3 + 2] = color.b;
-    }
-
-    geom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    return geom;
-  }, []);
-
-  const pins = useMemo(() => buildPins(), []);
-
-  function getDomainFromPoint(point: THREE.Vector3) {
-    const local = point.clone();
-    if (groupRef.current) {
-      groupRef.current.worldToLocal(local);
-    }
-    local.normalize();
-    return findDomainAtDirection(local)?.placement.domain ?? null;
-  }
-
-  return (
-    <group ref={groupRef}>
-      {/* Main sphere */}
-      <mesh
-        ref={meshRef}
-        geometry={geometry}
-        onPointerMove={(event) => {
-          event.stopPropagation();
-          const domain = getDomainFromPoint(event.point);
-          if (domain) {
-            setHover({ domain, x: event.clientX, y: event.clientY });
-            setAutoRotate(false);
-            return;
-          }
-          setHover(null);
-          setAutoRotate(true);
-        }}
-        onPointerOut={() => {
-          setHover(null);
-          setAutoRotate(true);
-        }}
-        onClick={(event) => {
-          event.stopPropagation();
-          const domain = getDomainFromPoint(event.point);
-          onSelectDomain(domain && selectedDomain !== domain.id ? domain.id : null);
-        }}
-      >
-        <meshStandardMaterial vertexColors roughness={0.96} metalness={0} flatShading={false} />
-      </mesh>
-
-      {/* Faint latitude/longitude grid - very subtle */}
-      <mesh>
-        <sphereGeometry args={[RADIUS * 1.0025, 36, 22]} />
-        <meshBasicMaterial color="#8A7E6F" wireframe transparent opacity={0.04} />
-      </mesh>
-
-      {/* Outer atmospheric halo */}
-      <mesh>
-        <sphereGeometry args={[RADIUS * 1.045, 48, 32]} />
-        <meshBasicMaterial color="#E8DDD0" transparent opacity={0.12} side={THREE.BackSide} />
-      </mesh>
-      <mesh>
-        <sphereGeometry args={[RADIUS * 1.085, 48, 32]} />
-        <meshBasicMaterial color="#E8DDD0" transparent opacity={0.05} side={THREE.BackSide} />
-      </mesh>
-
-      {/* Continent labels — borderless, just letter-spaced serif */}
-      {PLACEMENTS.map((placement) => (
-        <Html
-          key={placement.domain.id}
-          position={placement.center.clone().multiplyScalar(RADIUS * 1.18).toArray()}
-          center
-          distanceFactor={4.7}
-          occlude
-          style={{ pointerEvents: "none" }}
-        >
-          <div
-            style={{
-              color: "#1A1612",
-              fontFamily: "Fraunces, ui-serif, Georgia, serif",
-              fontSize: "11px",
-              fontWeight: 500,
-              letterSpacing: "0.02em",
-              lineHeight: "1",
-              opacity: selectedDomain && selectedDomain !== placement.domain.id ? 0.28 : 0.94,
-              padding: "2px 6px",
-              transition: "opacity 220ms ease",
-              whiteSpace: "nowrap",
-              textShadow: "0 1px 2px rgba(245,241,235,0.85), 0 0 6px rgba(245,241,235,0.6)"
-            }}
-          >
-            {placement.domain.name}
-          </div>
-        </Html>
-      ))}
-
-      {/* Pin dots — warm amber on selected continent, cream otherwise */}
-      {pins.map((pin, index) => {
-        const isSelected = selectedDomain === pin.domainId;
-        const isDim = selectedDomain && !isSelected;
-        return (
-          <mesh key={`${pin.domainId}-${index}`} position={pin.pos.toArray()}>
-            <sphereGeometry args={[isSelected ? 0.014 : 0.011, 6, 6]} />
-            <meshBasicMaterial
-              color={isSelected ? "#F5C77E" : isDim ? "#8A7E6F" : "#FAF1DC"}
-              transparent
-              opacity={isDim ? 0.22 : 0.92}
-            />
-          </mesh>
-        );
-      })}
-    </group>
-  );
-}
-
-function Starfield() {
-  const points = useMemo(() => {
-    const count = 220;
-    const arr = new Float32Array(count * 3);
-    for (let index = 0; index < count; index++) {
-      const r = 8.2 + seededUnit(index + 101) * 4.4;
-      const theta = seededUnit(index + 211) * Math.PI * 2;
-      const phi = Math.acos(2 * seededUnit(index + 307) - 1);
-      arr[index * 3] = r * Math.sin(phi) * Math.cos(theta);
-      arr[index * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-      arr[index * 3 + 2] = r * Math.cos(phi);
-    }
-    return arr;
-  }, []);
-
-  return (
-    <points>
-      <bufferGeometry>
-        <bufferAttribute attach="attributes-position" args={[points, 3]} count={220} />
-      </bufferGeometry>
-      <pointsMaterial size={0.016} color="#8A7E6F" transparent opacity={0.22} sizeAttenuation />
-    </points>
-  );
-}
+/* ============ component ============ */
 
 export function KnowledgeGlobe({ selectedDomain, onSelectDomain }: GlobeProps) {
-  const [hover, setHover] = useState<{ domain: Domain; x: number; y: number } | null>(null);
-  const [reducedMotion, setReducedMotion] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState({ w: 460, h: 460 });
 
   useEffect(() => {
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReducedMotion(media.matches);
-    const onChange = (event: MediaQueryListEvent) => setReducedMotion(event.matches);
-    media.addEventListener("change", onChange);
-    return () => media.removeEventListener("change", onChange);
+    if (!wrapRef.current) return;
+    const ro = new ResizeObserver((entries) => {
+      const r = entries[0].contentRect;
+      setBox({ w: r.width, h: r.height });
+    });
+    ro.observe(wrapRef.current);
+    return () => ro.disconnect();
   }, []);
 
-  const topDomains = useMemo(() => [...DOMAINS].sort((a, b) => b.docCount - a.docCount).slice(0, 3), []);
+  const size = Math.min(box.w, box.h);
+  const r = size * 0.42;
+  const cx = box.w / 2;
+  const cy = box.h / 2;
+  const TILT = 20;
+
+  const [rot, setRot] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [hoverDomain, setHoverDomain] = useState<DomainId | null>(null);
+  const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
+  const dragRef = useRef({ x: 0, rot: 0 });
+  const rotRef = useRef(0);
+  rotRef.current = rot;
+
+  // Auto-rotate when not dragging
+  useEffect(() => {
+    if (dragging) return;
+    let raf = 0;
+    let last = performance.now();
+    const tick = (t: number) => {
+      const dt = t - last;
+      last = t;
+      setRot((rr) => rr + dt * 0.010);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [dragging]);
+
+  const onDown = (clientX: number) => {
+    setDragging(true);
+    dragRef.current = { x: clientX, rot: rotRef.current };
+  };
+  const onMove = (clientX: number) => {
+    if (!dragging) return;
+    const dx = clientX - dragRef.current.x;
+    setRot(dragRef.current.rot + dx * 0.55);
+  };
+  const onUp = () => setDragging(false);
+
+  const tilt = (TILT * Math.PI) / 180;
+  const cosT = Math.cos(tilt);
+  const sinT = Math.sin(tilt);
+
+  const project = (lon: number, lat: number) => {
+    const lonR = ((lon + rot) * Math.PI) / 180;
+    const latR = (lat * Math.PI) / 180;
+    const cosLat = Math.cos(latR);
+    const x = cosLat * Math.sin(lonR);
+    const y = Math.sin(latR);
+    const z = cosLat * Math.cos(lonR);
+    const y2 = y * cosT - z * sinT;
+    const z2 = y * sinT + z * cosT;
+    return { sx: cx + x * r, sy: cy - y2 * r, z: z2 };
+  };
+
+  const meridians = [-150, -120, -90, -60, -30, 0, 30, 60, 90, 120, 150, 180];
+  const parallels = [-60, -30, 0, 30, 60];
+
+  const topThree = useMemo(() => [...DOMAINS].sort((a, b) => b.docCount - a.docCount).slice(0, 3), []);
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
@@ -345,80 +231,221 @@ export function KnowledgeGlobe({ selectedDomain, onSelectDomain }: GlobeProps) {
             Clear filter
           </button>
         ) : (
-          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#A89C8A]">drag / scroll / click</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#A89C8A]">drag to rotate</span>
         )}
       </div>
 
       <div
-        className="relative flex-1 overflow-hidden rounded-[4px] border border-[rgba(26,22,18,0.08)]"
+        ref={wrapRef}
+        className="relative flex-1 select-none overflow-hidden rounded-[4px] border border-[rgba(26,22,18,0.08)]"
         style={{
-          // soft radial vignette behind the globe for depth
-          background:
-            "radial-gradient(circle at 50% 48%, #F2E8D7 0%, #E8DBC5 55%, #DCCBAF 100%)"
+          background: "radial-gradient(circle at 50% 48%, #F2E8D7 0%, #E5D6BD 60%, #D6C3A4 100%)",
+          cursor: dragging ? "grabbing" : "grab",
+          touchAction: "none"
         }}
+        onMouseDown={(e) => onDown(e.clientX)}
+        onMouseMove={(e) => {
+          onMove(e.clientX);
+          // hover tracking
+          const rect = wrapRef.current?.getBoundingClientRect();
+          if (rect) setHoverPos({ x: e.clientX, y: e.clientY });
+        }}
+        onMouseLeave={() => {
+          onUp();
+          setHoverDomain(null);
+          setHoverPos(null);
+        }}
+        onMouseUp={onUp}
+        onTouchStart={(e) => onDown(e.touches[0].clientX)}
+        onTouchMove={(e) => onMove(e.touches[0].clientX)}
+        onTouchEnd={onUp}
       >
-        <Canvas
-          camera={{ position: [0, 0, 4.35], fov: 36 }}
-          dpr={[1, 1.6]}
-          gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
-          style={{ background: "transparent" }}
+        <svg
+          width={box.w}
+          height={box.h}
+          viewBox={`0 0 ${box.w} ${box.h}`}
+          role="img"
+          aria-label="Knowledge world — drag to rotate"
         >
-          <ambientLight intensity={0.62} />
-          <directionalLight position={[3.5, 2.6, 4.2]} intensity={0.88} color="#FFF6E5" />
-          <directionalLight position={[-3.2, -2.4, -1.8]} intensity={0.22} color="#C9D6E2" />
-          {/* warm rim light for sunset feel on the edge */}
-          <pointLight position={[-2.4, 0.4, 3.0]} intensity={0.35} color="#F5C77E" distance={9} />
-          <Starfield />
-          <Sphere
-            selectedDomain={selectedDomain}
-            onSelectDomain={onSelectDomain}
-            reducedMotion={reducedMotion}
-            setHover={setHover}
-          />
-          <OrbitControls
-            enablePan={false}
-            enableZoom
-            minDistance={3}
-            maxDistance={6.6}
-            rotateSpeed={0.55}
-            zoomSpeed={0.38}
-            enableDamping
-            dampingFactor={0.08}
-          />
-        </Canvas>
+          <defs>
+            <linearGradient id="kw-field" x1="10%" y1="8%" x2="92%" y2="95%">
+              {DOMAIN_CENTERS.map((d, i) => (
+                <stop
+                  key={d.id}
+                  offset={`${(i / Math.max(1, DOMAIN_CENTERS.length - 1)) * 100}%`}
+                  stopColor={d.color}
+                />
+              ))}
+            </linearGradient>
+            <radialGradient id="kw-shade" cx="65%" cy="68%" r="55%">
+              <stop offset="0%" stopColor="rgba(0,0,0,0)" />
+              <stop offset="100%" stopColor="rgba(26,22,18,0.22)" />
+            </radialGradient>
+            <radialGradient id="kw-highlight" cx="30%" cy="24%" r="58%">
+              <stop offset="0%" stopColor="rgba(255,255,255,0.28)" />
+              <stop offset="52%" stopColor="rgba(255,255,255,0.06)" />
+              <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+            </radialGradient>
+            <radialGradient id="kw-atmosphere" cx="50%" cy="50%" r="50%">
+              <stop offset="92%" stopColor="rgba(232,221,208,0)" />
+              <stop offset="100%" stopColor="rgba(232,221,208,0.5)" />
+            </radialGradient>
+            <clipPath id="kw-clip">
+              <circle cx={cx} cy={cy} r={r} />
+            </clipPath>
+          </defs>
 
-        {hover ? (
-          <div
-            className="pointer-events-none fixed z-50 rounded-[4px] border border-[rgba(26,22,18,0.12)] bg-white px-3 py-2 shadow-sm"
-            style={{ left: hover.x + 14, top: hover.y + 14 }}
-          >
-            <div className="font-serif text-[13px] text-[#1A1612]">{hover.domain.name}</div>
-            <div className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[#8A7E6F]">
-              {hover.domain.docCount} memories
-            </div>
-            <div className="mt-1 font-mono text-[10px] text-[#8A7E6F]">
-              Updated {new Date(hover.domain.lastUpdated).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-            </div>
-            <div className="mt-1 max-w-[220px] text-[11px] leading-[1.35] text-[#5A5450]">
-              {hover.domain.contributors.slice(0, 3).join(" · ")}
-            </div>
-          </div>
+          {/* atmosphere */}
+          <circle cx={cx} cy={cy} r={r * 1.08} fill="url(#kw-atmosphere)" />
+
+          {/* sphere base */}
+          <circle cx={cx} cy={cy} r={r} fill="url(#kw-field)" stroke="rgba(26,22,18,0.18)" strokeWidth={1.2} />
+
+          {/* coverage cells (domain ownership) */}
+          <g clipPath="url(#kw-clip)">
+            {COVERAGE_CELLS.map((cell) => {
+              const projected = cell.points.map((p) => project(p.lon, p.lat));
+              const avgZ = projected.reduce((s, p) => s + p.z, 0) / projected.length;
+              if (avgZ < -0.3) return null;
+              const depth = clamp((avgZ + 0.3) / 1.3, 0, 1);
+              const path =
+                projected
+                  .map((p, idx) => `${idx === 0 ? "M" : "L"} ${p.sx.toFixed(1)} ${p.sy.toFixed(1)}`)
+                  .join(" ") + " Z";
+              const isSelected = selectedDomain === cell.domainId;
+              const isDimmed = selectedDomain && !isSelected;
+              const cellOpacity = (isDimmed ? 0.18 : 0.7 + cell.strength * 0.18) * (0.74 + depth * 0.28);
+
+              return (
+                <path
+                  key={cell.id}
+                  d={path}
+                  fill={cell.color}
+                  opacity={cellOpacity}
+                  stroke={cell.color}
+                  strokeOpacity={isDimmed ? 0.16 : 0.5}
+                  strokeWidth={0.7}
+                  strokeLinejoin="round"
+                  style={{ cursor: "pointer" }}
+                  onMouseEnter={(e) => {
+                    setHoverDomain(cell.domainId);
+                    setHoverPos({ x: e.clientX, y: e.clientY });
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectDomain(selectedDomain === cell.domainId ? null : cell.domainId);
+                  }}
+                />
+              );
+            })}
+          </g>
+
+          {/* graticule — meridians */}
+          {meridians.map((L) => {
+            const pts: { sx: number; sy: number; z: number }[] = [];
+            for (let lat = -90; lat <= 90; lat += 6) pts.push(project(L, lat));
+            const visible = pts.filter((p) => p.z > -0.05);
+            if (visible.length < 2) return null;
+            const path = visible
+              .map((p, i) => `${i === 0 ? "M" : "L"} ${p.sx.toFixed(1)} ${p.sy.toFixed(1)}`)
+              .join(" ");
+            return (
+              <path
+                key={`m${L}`}
+                d={path}
+                stroke="rgba(255,255,255,0.42)"
+                strokeWidth={0.6}
+                fill="none"
+                opacity={0.8}
+              />
+            );
+          })}
+
+          {/* graticule — parallels */}
+          {parallels.map((lat) => {
+            const pts: { sx: number; sy: number; z: number }[] = [];
+            for (let lon = -180; lon <= 180; lon += 6) pts.push(project(lon, lat));
+            const visible = pts.filter((p) => p.z > -0.05);
+            if (visible.length < 2) return null;
+            const path = visible
+              .map((p, i) => `${i === 0 ? "M" : "L"} ${p.sx.toFixed(1)} ${p.sy.toFixed(1)}`)
+              .join(" ");
+            return (
+              <path
+                key={`pa${lat}`}
+                d={path}
+                stroke="rgba(255,255,255,0.42)"
+                strokeWidth={0.6}
+                fill="none"
+                opacity={0.8}
+              />
+            );
+          })}
+
+          {/* lighting */}
+          <circle cx={cx} cy={cy} r={r} fill="url(#kw-shade)" pointerEvents="none" />
+          <circle cx={cx} cy={cy} r={r} fill="url(#kw-highlight)" pointerEvents="none" />
+
+          {/* domain labels — float over the continent center when visible */}
+          {DOMAIN_CENTERS.map((dc) => {
+            const p = project(dc.lon, dc.lat);
+            if (p.z < -0.1) return null;
+            const isSelected = selectedDomain === dc.id;
+            const isDimmed = selectedDomain && !isSelected;
+            const opacity = isDimmed ? 0.32 : 1;
+            return (
+              <g key={`lbl-${dc.id}`} pointerEvents="none" opacity={opacity}>
+                <text
+                  x={p.sx}
+                  y={p.sy}
+                  textAnchor="middle"
+                  fontFamily="Fraunces, ui-serif, Georgia, serif"
+                  fontSize={11}
+                  fontWeight={500}
+                  fill="#1A1612"
+                  stroke="rgba(245,241,235,0.7)"
+                  strokeWidth={3}
+                  paintOrder="stroke"
+                >
+                  {dc.name}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* landmark pins — top contributors per domain */}
+          {LANDMARKS.map((lm, i) => {
+            const p = project(lm.lon, lm.lat);
+            if (p.z < -0.15) return null;
+            const isSelected = selectedDomain === lm.domainId;
+            const isDimmed = selectedDomain && !isSelected;
+            const depthOpacity = clamp((p.z + 0.45) / 1.45, 0.4, 1);
+            return (
+              <g key={`lm-${i}`} opacity={isDimmed ? 0.2 : depthOpacity} pointerEvents="none">
+                <circle cx={p.sx} cy={p.sy} r={2.6} fill="#FAF8F5" stroke={lm.color} strokeWidth={1} />
+              </g>
+            );
+          })}
+        </svg>
+
+        {/* tooltip */}
+        {hoverDomain && hoverPos ? (
+          <DomainTooltip
+            domain={DOMAIN_CENTERS.find((d) => d.id === hoverDomain)!}
+            x={hoverPos.x}
+            y={hoverPos.y}
+          />
         ) : null}
 
-        {reducedMotion ? (
-          <div className="absolute bottom-2 left-2 font-mono text-[9px] uppercase tracking-[0.12em] text-[#8A7E6F]">
-            reduced motion
-          </div>
-        ) : null}
-
-        {/* Quiet compass marker — bottom right */}
-        <div className="pointer-events-none absolute bottom-3 right-3 font-mono text-[9px] uppercase tracking-[0.16em] text-[#A89C8A]">
-          1,247 memories · 8 continents
+        {/* footnote */}
+        <div className="pointer-events-none absolute bottom-3 right-3 font-mono text-[9px] uppercase tracking-[0.16em] text-[#5A5450]">
+          {DOMAINS.reduce((s, d) => s + d.docCount, 0).toLocaleString()} memories · 8 continents
         </div>
       </div>
 
+      {/* top continents */}
       <div className="mt-3 grid gap-1.5">
-        {topDomains.map((domain, index) => (
+        {topThree.map((domain, idx) => (
           <button
             key={domain.id}
             type="button"
@@ -426,13 +453,33 @@ export function KnowledgeGlobe({ selectedDomain, onSelectDomain }: GlobeProps) {
             className="flex items-center justify-between gap-4 rounded-[3px] px-1 py-1 text-left font-mono text-[10px] uppercase tracking-[0.1em] text-[#5A5450] transition-colors hover:bg-[rgba(255,255,255,0.42)]"
           >
             <span className="flex min-w-0 items-center gap-2">
-              <span className="text-[#A89C8A]">{String(index + 1).padStart(2, "0")}</span>
+              <span className="text-[#A89C8A]">{String(idx + 1).padStart(2, "0")}</span>
               <span className="inline-block h-2 w-2 rounded-full" style={{ background: domain.color }} />
               <span className="truncate">{domain.name}</span>
             </span>
             <span className="text-[#8A7E6F]">{domain.docCount} memories</span>
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function DomainTooltip({ domain, x, y }: { domain: DomainCenter; x: number; y: number }) {
+  return (
+    <div
+      className="pointer-events-none fixed z-50 rounded-[4px] border border-[rgba(26,22,18,0.12)] bg-white px-3 py-2 shadow-sm"
+      style={{ left: x + 14, top: y + 14 }}
+    >
+      <div className="font-serif text-[13px] text-[#1A1612]">{domain.name}</div>
+      <div className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[#8A7E6F]">
+        {domain.docCount} memories
+      </div>
+      <div className="mt-1 font-mono text-[10px] text-[#8A7E6F]">
+        Updated {new Date(domain.lastUpdated).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+      </div>
+      <div className="mt-1 max-w-[220px] text-[11px] leading-[1.35] text-[#5A5450]">
+        {domain.contributors.slice(0, 3).join(" · ")}
       </div>
     </div>
   );
