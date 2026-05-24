@@ -19,6 +19,25 @@ type NavBarProps = {
   onExpandedChange: (expanded: boolean) => void;
 };
 
+function SocratesIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.6" />
+      <text
+        x="12"
+        y="16"
+        textAnchor="middle"
+        fontFamily="Fraunces, ui-serif, Georgia, serif"
+        fontSize="12.5"
+        fontWeight="500"
+        fill="currentColor"
+      >
+        Σ
+      </text>
+    </svg>
+  );
+}
+
 type NavItem =
   | {
       key: string;
@@ -102,6 +121,13 @@ export function NavBar({ expanded, onExpandedChange }: NavBarProps) {
 
   const generalItems: NavItem[] = [
     {
+      key: "socrates",
+      label: "SOCRATES",
+      icon: <SocratesIcon />,
+      route: `/projects/${currentProjectId}/socrates`,
+      active: /^\/projects\/[^/]+\/socrates$/.test(pathname)
+    },
+    {
       key: "dashboard",
       label: "DASHBOARD",
       icon: <Grid2x2Icon />,
@@ -146,6 +172,13 @@ export function NavBar({ expanded, onExpandedChange }: NavBarProps) {
   ];
 
   const projectItems: NavItem[] = [
+    {
+      key: "socrates",
+      label: "SOCRATES",
+      icon: <SocratesIcon />,
+      route: `/projects/${currentProjectId}/socrates`,
+      active: new RegExp(`^/projects/${currentProjectId}/socrates$`).test(pathname)
+    },
     {
       key: "dashboard",
       label: "DASHBOARD",

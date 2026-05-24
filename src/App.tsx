@@ -6,6 +6,7 @@ import { LiveDocPage } from "./pages/LiveDocPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LiveDocViewerPage } from "./pages/LiveDocViewerPage";
 import { ProjectBrainPage } from "./pages/ProjectBrainPage";
+import { SocratesPage } from "./pages/SocratesPage";
 import { ProjectDashboardPage } from "./pages/ProjectDashboardPage";
 import { ProjectFlowchartPage } from "./pages/ProjectFlowchartPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -70,6 +71,7 @@ export default function App() {
           <Route path="overview" element={<CodePage />} />
           <Route path="overview/repos/:repoId" element={<CodebaseOverviewPage />} />
           <Route path="brain" element={<ProjectBrainPage />} />
+          <Route path="socrates" element={<SocratesPage />} />
           <Route path="flow" element={<ProjectFlowchartPage />} />
           <Route path="live-doc" element={<LiveDocPage />} />
           <Route path="docs/:docId/view" element={<LiveDocViewerPage />} />

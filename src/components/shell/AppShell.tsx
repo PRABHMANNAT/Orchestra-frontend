@@ -15,6 +15,7 @@ export function AppShell() {
   const location = useLocation();
   const isBrainRoute = location.pathname.includes("/brain");
   const isInfoRoute = /\/projects\/[^/]+\/info$/.test(location.pathname);
+  const isSocratesRoute = /\/projects\/[^/]+\/socrates$/.test(location.pathname);
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
@@ -26,7 +27,7 @@ export function AppShell() {
         transition={navTransition}
         className="h-screen flex-shrink-0"
       />
-      {isBrainRoute || isInfoRoute ? null : <SocratesPanel />}
+      {isBrainRoute || isInfoRoute || isSocratesRoute ? null : <SocratesPanel />}
       <main className="min-w-0 flex-1 overflow-hidden bg-bg">
         <Outlet />
       </main>
