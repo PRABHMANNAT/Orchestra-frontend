@@ -186,7 +186,6 @@ export function SocratesChat() {
           }}
           panelOpen={panelOpen}
           onTogglePanel={() => setPanelOpen((v) => !v)}
-          activeArtifact={activeArtifact}
         />
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-8 lg:px-12 xl:px-16">
@@ -268,13 +267,11 @@ export function SocratesChat() {
 function Header({
   onNewChat,
   panelOpen,
-  onTogglePanel,
-  activeArtifact
+  onTogglePanel
 }: {
   onNewChat: () => void;
   panelOpen: boolean;
   onTogglePanel: () => void;
-  activeArtifact: ArtifactSpec | null;
 }) {
   return (
     <header className="flex h-[64px] items-center justify-between gap-4 border-b border-[rgba(26,22,18,0.08)] bg-[#F5F1EB] px-6 lg:px-10">
@@ -287,10 +284,7 @@ function Header({
           <div className="font-serif text-[16px] leading-none text-[#1A1612]">Socrates</div>
         </div>
       </div>
-      <div className="hidden flex-1 items-center justify-center gap-3 md:flex">
-        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#A89C8A]">
-          {activeArtifact ? `viewing · ${activeArtifact.title}` : "thinking partner · grounded in the brain"}
-        </span>
+      <div className="hidden flex-1 items-center justify-center md:flex">
         <ModeBadge />
       </div>
       <div className="flex items-center gap-2">
