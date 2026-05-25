@@ -171,13 +171,6 @@ export function NavBar({ expanded, onExpandedChange }: NavBarProps) {
       active: new RegExp(`^/projects/${currentProjectId}/socrates$`).test(pathname)
     },
     {
-      key: "codebase",
-      label: "CODEBASE",
-      icon: <CodeIcon />,
-      route: `/projects/${currentProjectId}/overview`,
-      active: new RegExp(`^/projects/${currentProjectId}/overview(?:/.*)?$`).test(pathname)
-    },
-    {
       key: "brain",
       label: "BRAIN",
       icon: <SparklesIcon />,
@@ -185,25 +178,32 @@ export function NavBar({ expanded, onExpandedChange }: NavBarProps) {
       active: new RegExp(`^/projects/${currentProjectId}/brain$`).test(pathname)
     },
     {
-      key: "flowchart",
-      label: "FLOWCHART",
-      icon: <GitBranchIcon />,
-      route: `/projects/${currentProjectId}/flow`,
-      active: new RegExp(`^/projects/${currentProjectId}/flow$`).test(pathname)
-    },
-    {
-      key: "live-doc",
-      label: "LIVE DOC",
-      icon: <FileDescriptionIcon />,
-      route: `/projects/${currentProjectId}/live-doc`,
-      active: new RegExp(`^/projects/${currentProjectId}/live-doc$`).test(pathname)
-    },
-    {
       key: "info",
       label: "INFO",
       icon: <AlertCircleIcon />,
       route: `/projects/${currentProjectId}/info`,
       active: new RegExp(`^/projects/${currentProjectId}/info$`).test(pathname)
+    },
+    {
+      key: "codebase",
+      label: "CODEBASE",
+      icon: <CodeIcon />,
+      route: `/projects/${currentProjectId}/overview`,
+      active: new RegExp(`^/projects/${currentProjectId}/overview(?:/.*)?$`).test(pathname)
+    },
+    {
+      key: "live-doc",
+      label: "LIVE DOCS",
+      icon: <FileDescriptionIcon />,
+      route: `/projects/${currentProjectId}/live-doc`,
+      active: new RegExp(`^/projects/${currentProjectId}/live-doc$`).test(pathname)
+    },
+    {
+      key: "flowchart",
+      label: "FLOWCHART",
+      icon: <GitBranchIcon />,
+      route: `/projects/${currentProjectId}/flow`,
+      active: new RegExp(`^/projects/${currentProjectId}/flow$`).test(pathname)
     }
   ];
 
